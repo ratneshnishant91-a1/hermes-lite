@@ -1,24 +1,31 @@
-# Hermes-Lite v1.5 - Production Container
-
-FROM python:3.11-slim
+# Stage 1: Build
+FROM rust:1.98.1-slim AS builder
 
 WORKDIR /app
+COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
+COPY src ./src
 
-# Install dependencies
-RUN pip install --no-cache-dir PyYAML docker fastapi uvicorn python-multipart psutil
+# Build release binary
+RUN cargo build --release --locked
 
-# Copy application
-COPY . /app
+# Stage 2: Run (Distroless)
+FROM gcr.io/distroless/cc-debian12:latest
 
-# Create workspace
-RUN mkdir -p /app/workspace/files
+WORKDIR /app
+COPY --from=builder /app/target/release/hermes-lite .
+COPY config.yaml .
 
-# Expose dashboard port
-EXPOSE 8080
+# Non-root user for security
+USER nonroot:nonroot
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "from health import HealthChecker; from config import Config; h = HealthChecker(Config.load()); r = h.check_readiness(); exit(0 if r['all_healthy'] else 1)"
+# Env vars
+ENV RUST_LOG=info
+ENV HERMES_BIND=0.0.0.0:8000
 
-# Run dashboard
-CMD ["python", "dashboard.py"]
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["./hermes-lite", "run", "healthcheck"] || exit 1
+
+ENTRYPOINT ["./hermes-lite", "gateway"]
