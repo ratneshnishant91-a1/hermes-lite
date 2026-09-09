@@ -26,7 +26,12 @@ impl Context {
         } else {
             saved.into_iter().map(message_to_json).collect()
         };
-        if messages.first().and_then(|m| m.get("role")).and_then(|r| r.as_str()) != Some("system") {
+        if messages
+            .first()
+            .and_then(|m| m.get("role"))
+            .and_then(|r| r.as_str())
+            != Some("system")
+        {
             messages.insert(0, json!({"role":"system","content":system}));
         }
         Ok(Self {

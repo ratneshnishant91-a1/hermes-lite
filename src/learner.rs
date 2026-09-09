@@ -52,8 +52,14 @@ impl SelfLearner {
             if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
                 if let Some(c) = msg.get("content").and_then(|c| c.as_str()) {
                     let lower = c.to_lowercase();
-                    if ["i prefer", "i like", "always", "never"].iter().any(|k| lower.contains(k)) {
-                        store.remember(&format!("User preference: {}", &c[..c.len().min(200)]), "learning")?;
+                    if ["i prefer", "i like", "always", "never"]
+                        .iter()
+                        .any(|k| lower.contains(k))
+                    {
+                        store.remember(
+                            &format!("User preference: {}", &c[..c.len().min(200)]),
+                            "learning",
+                        )?;
                         self.log.memories_consolidated.push(serde_json::json!({
                             "timestamp": Utc::now().to_rfc3339(),
                             "fact": c

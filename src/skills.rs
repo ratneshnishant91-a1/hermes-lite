@@ -1,17 +1,15 @@
 use anyhow::{bail, Result};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Skills {
     root: PathBuf,
 }
 
 impl Skills {
-    pub fn new(root: impl AsRef<Path>) -> Self {
-        Self {
-            root: root.as_ref().to_path_buf(),
-        }
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
     }
 
     pub fn catalog_text(&self) -> String {
