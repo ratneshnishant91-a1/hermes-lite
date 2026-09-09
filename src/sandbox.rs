@@ -1,11 +1,13 @@
 use crate::config::SandboxConfig;
 use anyhow::Result;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::process::Command;
-use std::time::Duration;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
-const SAFE_ENV: &[&str] = &["PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR", "PWD"];
+const SAFE_ENV: &[&str] = &[
+    "PATH", "HOME", "USER", "LANG", "LC_ALL", "TERM", "SHELL", "TMPDIR", "TMP", "TEMP", "PWD",
+];
 
 #[derive(Debug, Serialize)]
 pub struct SandboxResult {
@@ -15,45 +17,57 @@ pub struct SandboxResult {
     pub timeout: bool,
 }
 
+/// Run `command` via `bash -c` with a filtered environment and a hard timeout.
+///
+/// After `Child::try_wait` reaps the process we only read the pipes — we do **not**
+/// call `wait_with_output` again (that would wait on an already-reaped child).
 pub fn run_shell(cfg: &SandboxConfig, command: &str, cwd: &str) -> Result<SandboxResult> {
     let timeout = Duration::from_secs(cfg.timeout.max(1));
-    let mut cmd = if cfg.network_enabled {
-        Command::new("bash")
-    } else {
-        Command::new("bash")
-    };
-    cmd.arg("-c").arg(command).current_dir(cwd);
-    cmd.env_clear();
-    let allow: HashSet<&str> = SAFE_ENV.iter().copied().collect();
+    let mut cmd = Command::new("bash");
+    cmd.arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env_clear();
     for (k, v) in std::env::vars() {
-        if allow.contains(k.as_str()) {
+        if SAFE_ENV.iter().any(|s| *s == k) {
             cmd.env(k, v);
         }
     }
 
-    // Best-effort timeout using wait_timeout-like polling via spawn + try_wait.
-    let mut child = cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
-    let start = std::time::Instant::now();
+    let mut child = cmd.spawn()?;
+    let start = Instant::now();
     loop {
-        if let Some(status) = child.try_wait()? {
-            let out = child.wait_with_output()?;
-            return Ok(SandboxResult {
-                exit_code: status.code().unwrap_or(-1),
-                stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-                timeout: false,
-            });
+        match child.try_wait()? {
+            Some(status) => {
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    let _ = pipe.read_to_string(&mut stdout);
+                }
+                if let Some(mut pipe) = child.stderr.take() {
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                return Ok(SandboxResult {
+                    exit_code: status.code().unwrap_or(-1),
+                    stdout,
+                    stderr,
+                    timeout: false,
+                });
+            }
+            None if start.elapsed() > timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(SandboxResult {
+                    exit_code: -1,
+                    stdout: String::new(),
+                    stderr: format!("timed out after {}s", cfg.timeout),
+                    timeout: true,
+                });
+            }
+            None => std::thread::sleep(Duration::from_millis(40)),
         }
-        if start.elapsed() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Ok(SandboxResult {
-                exit_code: -1,
-                stdout: String::new(),
-                stderr: format!("timed out after {}s", cfg.timeout),
-                timeout: true,
-            });
-        }
-        std::thread::sleep(Duration::from_millis(50));
     }
 }
