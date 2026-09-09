@@ -27,11 +27,12 @@ enum Commands {
     Skills,
     Sessions,
     Backup,
-    /// Manage sub-agents
     Agents {
         #[command(subcommand)]
         action: AgentCommands,
     },
+    /// List active goals
+    Goals,
     Gateway {
         #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")]
         bind: String,
@@ -41,11 +42,8 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum AgentCommands {
-    /// Spawn a sub-agent
     Spawn { task: String },
-    /// List all sub-agent tasks
     List,
-    /// Get result of a task
     Get { task_id: String },
 }
 
@@ -133,6 +131,18 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Commands::Goals => {
+            let mut agent = Agent::new(config.clone())?;
+            let goals = agent.list_goals();
+            if goals.is_empty() {
+                println!("No active goals.");
+            } else {
+                for g in goals {
+                    println!("[{}] {} (step {}/{})", g.status, g.description, g.current_step, g.plan.len());
+                }
+            }
+            Ok(())
+        }
         Commands::Gateway { bind } => {
             let mut agent = Agent::new(config.clone())?;
             gateway(&mut agent, &bind)
@@ -145,8 +155,8 @@ fn main() -> Result<()> {
 }
 
 fn repl(agent: &mut Agent) -> Result<()> {
-    println!("Hermes-Lite v2.0 (Rust 2024 / rustc 1.98)");
-    println!("session={}  commands: exit | stats | memories | skills | agents\n", agent.session_id());
+    println!("Hermes-Lite v2.0 (Rust 2024 / rustc 1.98) — Agentic mode");
+    println!("session={}  commands: exit | stats | goals | memories | skills\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: ");
@@ -164,6 +174,12 @@ fn repl(agent: &mut Agent) -> Result<()> {
         }
         if line == "stats" {
             println!("{}", serde_json::to_string_pretty(&agent.learning_stats())?);
+            continue;
+        }
+        if line == "goals" {
+            for g in agent.list_goals() {
+                println!("[{}] {} (step {}/{})", g.status, g.description, g.current_step, g.plan.len());
+            }
             continue;
         }
         match agent.run(line) {

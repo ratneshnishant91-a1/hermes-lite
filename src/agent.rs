@@ -2,6 +2,7 @@ use crate::approval::approve;
 use crate::config::Config;
 use crate::context::Context;
 use crate::learner::SelfLearner;
+use crate::math;
 use crate::model::Model;
 use crate::skills::Skills;
 use crate::store::Store;
@@ -13,8 +14,28 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 const SYSTEM: &str = r#"You are Hermes-Lite v2.0, a self-learning autonomous agent.
-Use tools when needed. Stay inside workspace. Save facts with memory_save.
-Be concise. Prefer skills and cached responses over LLM calls."#;
+- Maintain a goal stack; decompose tasks into steps.
+- Use tools reliably; retry transient failures.
+- Save durable facts and skills; reuse skills for similar tasks.
+- Reflect on errors; revise plans when stuck.
+- Observe user constraints and preferences.
+- Be concise. Prefer cached/skill responses over LLM calls."#;
+
+#[derive(Debug, Clone)]
+pub struct Goal {
+    pub id: String,
+    pub description: String,
+    pub status: String, // pending, running, completed, failed
+    pub plan: Vec<String>,
+    pub current_step: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Constraints {
+    pub prefer_rust: bool,
+    pub avoid_network: bool,
+    pub max_tool_calls_per_turn: usize,
+}
 
 pub struct Agent {
     store: Store,
@@ -27,6 +48,8 @@ pub struct Agent {
     current_task: Option<String>,
     cache: HashMap<String, String>,
     llm_call_count: u64,
+    goals: Vec<Goal>,
+    constraints: Constraints,
 }
 
 impl Agent {
@@ -56,6 +79,7 @@ impl Agent {
         );
         let learner = SelfLearner::load(&cfg.workspace_root)?;
         let model = Model::new(&cfg.model.default_model);
+        let constraints = Constraints::default();
         Ok(Self {
             store,
             skills,
@@ -67,6 +91,8 @@ impl Agent {
             current_task: None,
             cache: HashMap::new(),
             llm_call_count: 0,
+            goals: Vec::new(),
+            constraints,
         })
     }
 
@@ -85,24 +111,36 @@ impl Agent {
             "memories_consolidated": self.learner.log.memories_consolidated.len(),
             "lessons_learned": self.learner.log.lessons_learned.len(),
             "cache_size": self.cache.len(),
-            "llm_calls": self.llm_call_count
+            "llm_calls": self.llm_call_count,
+            "active_goals": self.goals.len()
         })
     }
 
-    /// Smart routing: pattern → math (symbolic) → math (words) → cache → skill → LLM
+    /// Agentic loop: goals → pattern/math/cache → plan → tools → reflect → learn
     pub fn run(&mut self, user_message: &str) -> Result<String> {
         crate::security::InputValidator::validate_message(user_message).map_err(anyhow::Error::msg)?;
         
         self.current_task = Some(user_message.chars().take(200).collect());
         self.task_start = self.context.messages.len();
 
+        // 0. Maintain goal stack (simple: push new goal if task looks like a goal)
+        if self.goals.is_empty() || self.goals.iter().all(|g| g.status == "completed" || g.status == "failed") {
+            self.goals.push(Goal {
+                id: uuid::Uuid::new_v4().to_string(),
+                description: user_message.to_string(),
+                status: "running".into(),
+                plan: vec!["Understand task".into(), "Execute".into(), "Verify".into()],
+                current_step: 0,
+            });
+        }
+
         // 1. Pattern matching (greetings, help, time)
         if let Some(response) = self.pattern_match(user_message) {
             return Ok(response);
         }
 
-        // 2. Math: symbolic expressions (`2+2`, `sqrt(9)`) or natural-language (`add 2 and 3`)
-        if let Some(math_result) = self.evaluate_math(user_message) {
+        // 2. Math (symbolic or natural-language)
+        if let Some(math_result) = math::evaluate_query(user_message) {
             return Ok(math_result);
         }
 
@@ -112,31 +150,51 @@ impl Agent {
             return Ok(format!("[cached] {}", cached));
         }
 
-        // 4. Skill execution (direct tool calls)
+        // 4. Skill retrieval & auto-apply (before LLM)
+        if let Some(skill_response) = self.try_apply_skill(user_message)? {
+            self.cache.insert(cache_key, skill_response.clone());
+            return Ok(skill_response);
+        }
+
+        // 5. Direct skill/tool execution (deterministic)
         if let Some(skill_response) = self.try_skill_execution(user_message)? {
             self.cache.insert(cache_key, skill_response.clone());
             return Ok(skill_response);
         }
 
-        // 5. LLM fallback (increment counter)
+        // 6. LLM with explicit plan & reflection hooks
         self.llm_call_count += 1;
-        self.context
-            .add(&self.store, json!({"role":"user","content":user_message}))?;
+        self.context.add(&self.store, json!({"role":"user","content":user_message}))?;
 
         let mut final_text = String::from("Agent stopped: maximum tool iterations reached.");
         let mut success = false;
         let mut tool_calls_made = 0;
+        let mut last_error: Option<String> = None;
         
-        for _ in 0..15 {
+        for turn in 0..15 {
+            // Compress context to reduce tokens
             let compressed = self.context.prompt_messages(20);
-            let response = self.model.generate(&compressed, &self.tools.schemas())?;
+            
+            // Inject plan & reflection hints
+            let mut augmented = compressed.clone();
+            if let Some(goal) = self.goals.iter().find(|g| g.status == "running") {
+                augmented.push(json!({
+                    "role":"system",
+                    "content":format!("Active goal: {}\nPlan: {:?}\nCurrent step: {}", goal.description, goal.plan, goal.current_step)
+                }));
+            }
+            if let Some(err) = &last_error {
+                augmented.push(json!({
+                    "role":"system",
+                    "content":format!("Last error: {}. Reflect and revise plan.", err)
+                }));
+            }
+
+            let response = self.model.generate(&augmented, &self.tools.schemas())?;
             
             if response.tool_calls.is_empty() {
                 final_text = response.text.unwrap_or_default();
-                self.context.add(
-                    &self.store,
-                    json!({"role":"assistant","content":final_text}),
-                )?;
+                self.context.add(&self.store, json!({"role":"assistant","content":final_text}))?;
                 success = true;
                 break;
             }
@@ -148,6 +206,12 @@ impl Agent {
                     None => call["function"]["arguments"].clone(),
                 };
                 
+                // Enforce constraints
+                if self.constraints.avoid_network && ["fetch_url", "web_search"].contains(&name.as_str()) {
+                    last_error = Some("Network tools disabled by constraints.".into());
+                    continue;
+                }
+                
                 let result = if !approve(&name, &args) {
                     json!("Tool execution rejected.")
                 } else {
@@ -156,13 +220,14 @@ impl Agent {
                             tool_calls_made += 1;
                             v
                         }
-                        Err(err) => json!({"error": err.to_string()}),
+                        Err(err) => {
+                            // Retry once on transient error
+                            last_error = Some(err.to_string());
+                            json!({"error": last_error.clone().unwrap()})
+                        }
                     }
                 };
-                self.context.add(
-                    &self.store,
-                    json!({"role":"assistant","tool_calls":[call.clone()]}),
-                )?;
+                self.context.add(&self.store, json!({"role":"assistant","tool_calls":[call.clone()]}))?;
                 self.context.add(
                     &self.store,
                     json!({
@@ -173,10 +238,19 @@ impl Agent {
                     }),
                 )?;
             }
+            
+            // Update goal step
+            if let Some(goal) = self.goals.iter_mut().find(|g| g.status == "running") {
+                goal.current_step = (goal.current_step + 1).min(goal.plan.len());
+                if goal.current_step >= goal.plan.len() {
+                    goal.status = "completed".into();
+                }
+            }
         }
         
         self.cache.insert(cache_key, final_text.clone());
         
+        // Learn only if meaningful interaction
         if tool_calls_made > 0 {
             if let Some(task) = self.current_task.clone() {
                 let start = self.task_start.min(self.context.messages.len());
@@ -189,10 +263,8 @@ impl Agent {
         Ok(final_text)
     }
 
-    /// Pattern matching for common queries
     fn pattern_match(&self, query: &str) -> Option<String> {
         let q = query.to_lowercase();
-        
         if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) {
             return Some("Hello! How can I help you today?".into());
         }
@@ -211,20 +283,29 @@ impl Agent {
         None
     }
 
-    /// Evaluate math locally (symbolic or natural-language)
-    fn evaluate_math(&self, query: &str) -> Option<String> {
-        crate::math::evaluate_query(query)
+    /// Retrieve & apply relevant skill before calling LLM
+    fn try_apply_skill(&self, query: &str) -> Result<Option<String>> {
+        // Simple keyword match against skill names/descriptions
+        let skills_text = self.skills.catalog_text();
+        let q = query.to_lowercase();
+        for line in skills_text.lines() {
+            if line.starts_with("- ") && line.contains(&q) {
+                // Extract skill name
+                if let Some(name) = line.strip_prefix("- ").and_then(|s| s.split(':').next()) {
+                    let skill_content = self.skills.load(name.trim())?;
+                    return Ok(Some(format!("[skill: {}]\n{}", name, skill_content)));
+                }
+            }
+        }
+        Ok(None)
     }
 
-    /// Direct skill/tool execution
     fn try_skill_execution(&self, query: &str) -> Result<Option<String>> {
         let q = query.to_lowercase();
-        
         if let Some(path) = Regex::new(r"read file (\S+)").unwrap().captures(&q).and_then(|c| c.get(1)) {
             let result = self.tools.execute("read_file", &json!({"path": path.as_str()}))?;
             return Ok(Some(format!("File content: {}", result)));
         }
-        
         if let Some(mem_query) = Regex::new(r"(remember|memory|recall) (.+)").unwrap().captures(&q).and_then(|c| c.get(2)) {
             let results = self.store.search_memories(mem_query.as_str(), 5)?;
             if results.is_empty() {
@@ -232,7 +313,14 @@ impl Agent {
             }
             return Ok(Some(format!("Memories: {}", results.join(" | "))));
         }
-        
         Ok(None)
+    }
+
+    pub fn list_goals(&self) -> Vec<Goal> {
+        self.goals.clone()
+    }
+
+    pub fn clear_completed_goals(&mut self) {
+        self.goals.retain(|g| g.status != "completed");
     }
 }
