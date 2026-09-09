@@ -46,16 +46,26 @@ impl Context {
         Ok(())
     }
 
+    /// Get messages for LLM, with optional compression
     pub fn prompt_messages(&self, maximum: usize) -> Vec<Value> {
         if self.messages.len() <= maximum {
             return self.messages.clone();
         }
+        
+        // Keep system message + recent messages
         let mut out = vec![self.messages[0].clone()];
-        out.push(json!({
-            "role":"system",
-            "content":"Earlier conversation was compressed. Use recent context."
-        }));
-        let start = self.messages.len().saturating_sub(maximum);
+        
+        // Add compression notice
+        let compressed_count = self.messages.len() - maximum - 1;
+        if compressed_count > 0 {
+            out.push(json!({
+                "role":"system",
+                "content":format!("[{} earlier messages compressed to save tokens]", compressed_count)
+            }));
+        }
+        
+        // Add recent messages
+        let start = self.messages.len().saturating_sub(maximum - 1);
         out.extend(self.messages[start..].iter().cloned());
         out
     }
