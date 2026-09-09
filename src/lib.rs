@@ -1,13 +1,13 @@
 //! Hermes-Lite Rust core.
-//!
-//! Targets Edition 2024 / rustc 1.85+ (tested against the 1.98.1 toolchain).
 
 pub mod agent;
+pub mod agents;
 pub mod approval;
 pub mod config;
 pub mod context;
 pub mod jobs;
 pub mod learner;
+pub mod math;
 pub mod mcp;
 pub mod model;
 pub mod network;
@@ -17,15 +17,13 @@ pub mod skills;
 pub mod store;
 pub mod tools;
 pub mod workspace;
-pub mod agents;
 
 pub use agent::Agent;
-pub use config::Config;
 pub use agents::SubAgentPool;
+pub use config::Config;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::security::InputValidator;
     use crate::workspace::Workspace;
 
@@ -46,9 +44,9 @@ mod tests {
 
     #[test]
     fn blocks_private_hosts() {
-        assert!(network::host_blocked("127.0.0.1"));
-        assert!(network::host_blocked("10.0.0.5"));
-        assert!(network::host_blocked("192.168.0.1"));
-        assert!(!network::host_blocked("example.com"));
+        assert!(crate::network::host_blocked("127.0.0.1"));
+        assert!(crate::network::host_blocked("10.0.0.5"));
+        assert!(crate::network::host_blocked("192.168.0.1"));
+        assert!(!crate::network::host_blocked("example.com"));
     }
 }
