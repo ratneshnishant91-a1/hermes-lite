@@ -1,13 +1,29 @@
-# Hermes-Lite v1.5 — AI Agent with Web Dashboard
+# Hermes-Lite v1.5 — Self-Learning AI Agent
 
-Production-ready autonomous AI agent with **Web UI Dashboard**, sessions, memory, skills, web browsing, multi-provider fallback, streaming, MCP, gateway API, and robust sandboxing.
+🚀 **Production-ready autonomous AI agent with self-learning capability**
 
-## ✨ What's New in v1.5
+The key USP of Hermes Agent: **learns from every task** to become smarter over time.
 
-- 🎨 **Web Dashboard** — Real-time metrics, logs, session management
-- 📊 **Visual Analytics** — Charts for request history, latency, success rate
-- 🔐 **API Management** — Token-based auth, user management
-- 🖥️ **Task Monitoring** — Background tasks, cron jobs, delegations
+## ✨ Key Features
+
+### 🧠 Self-Learning (USP)
+- **Automatic skill creation** from successful tasks
+- **Memory consolidation** - extracts important facts from conversations
+- **Performance feedback** - learns from successes and failures
+- **Skill evolution** - improves skills based on usage patterns
+
+### 🎨 Web Dashboard
+- Real-time metrics and analytics
+- Learning statistics visualization
+- Session and task management
+- API token management
+
+### 🛡️ Production Security
+- Docker sandboxing (default)
+- 5-layer user authorization
+- Dangerous command approval (regex patterns)
+- Credential filtering
+- Network isolation
 
 ## Quick Start
 
@@ -22,22 +38,80 @@ pip install -r requirements.txt
 # Set API key
 export OPENROUTER_API_KEY="sk-or-..."
 
-# Run CLI
-python -c "from store import Store; print('Core modules loaded')"
+# Run self-learning demo
+python demo.py
 
-# Run Dashboard
+# Run dashboard
 python dashboard.py
-
 # Open http://127.0.0.1:8080
 ```
 
-## Dashboard Features
+## Self-Learning Example
 
-- **Real-time metrics** — Requests, success rate, latency
-- **Activity logs** — Recent queries with provider/model info
-- **Session viewer** — Active sessions, message history
-- **Task monitor** — Background tasks, cron jobs, delegations
-- **API manager** — Create/revoke tokens, manage users
+```python
+from agent import Agent
+
+agent = Agent()
+
+# Task 1: Create a file
+agent.run("Create a Python file that prints Hello World")
+# → Agent creates skill automatically
+
+# Task 2: Similar task
+agent.run("Create a test file with a function")
+# → Agent uses learned skill from Task 1!
+
+# Check what was learned
+stats = agent.get_learning_stats()
+print(stats)
+# {'total_events': 2, 'skills_created': 1, ...}
+
+skills = agent.list_learned_skills()
+print(skills)
+# [{'name': 'auto_create_python', 'task': 'Create a Python file...'}]
+```
+
+## How Self-Learning Works
+
+```
+Task Completion
+    ↓
+Extract Workflow (tool calls, results)
+    ↓
+Create Skill (SKILL.md)
+    ↓
+Consolidate Memory (important facts)
+    ↓
+Record Lesson (success/failure)
+    ↓
+Next Similar Task → Use Learned Skill
+```
+
+### Learning Log
+
+Auto-saved to `workspace/learning_log.json`:
+
+```json
+{
+  "total_learning_events": 5,
+  "skills_created": [
+    {"name": "auto_create_python", "task": "Create a Python file..."}
+  ],
+  "memories_consolidated": [
+    {"fact": "User preference: I prefer Python over JavaScript"}
+  ],
+  "lessons_learned": [...]
+}
+```
+
+## Dashboard
+
+http://127.0.0.1:8080
+
+- 📊 Real-time metrics
+- 📝 Activity logs
+- 📚 Learned skills
+- 🎯 Task success rate
 
 ## API Endpoints
 
@@ -45,33 +119,22 @@ python dashboard.py
 |----------|--------|-------------|
 | `/` | GET | Web Dashboard |
 | `/api/metrics` | GET | Observability metrics |
-| `/api/logs` | GET | Recent request logs |
-| `/api/chat` | POST | Chat with agent |
-| `/api/sessions` | GET | List sessions |
-| `/api/tasks` | GET | List background tasks |
-
-## Security
-
-- ✅ Docker sandboxing (default)
-- ✅ 5-layer user authorization
-- ✅ Dangerous command approval (regex patterns)
-- ✅ Credential filtering
-- ✅ API authentication (Bearer tokens)
-- ✅ Network isolation
+| `/api/logs` | GET | Recent logs |
+| `/api/learning/stats` | GET | Learning statistics |
+| `/api/learning/skills` | GET | Auto-created skills |
 
 ## Configuration
 
-Edit `config.yaml`:
+`config.yaml`:
 
 ```yaml
-gateway:
-  host: "127.0.0.1"
-  port: 8000
-  require_auth: true
-
 sandbox:
-  mode: "docker"
-  network_enabled: false
+  mode: "docker"  # Docker isolation
+  network_enabled: false  # No network
+
+approvals:
+  mode: "manual"  # manual, smart, off
+  dangerous_patterns: [...]
 ```
 
 ## License
@@ -80,4 +143,4 @@ MIT
 
 ## Acknowledgments
 
-Architecture inspired by [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
+Self-learning architecture inspired by [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
