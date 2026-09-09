@@ -1,71 +1,46 @@
-# Hermes-Lite v2.0 — Rust Core
+# Hermes-Lite v2.0 — Rust 2024 core
 
-The agent **core is now Rust**. Python files remain as a prototype archive; new work should go through the Rust crate.
+Pinned to **rustc 1.98.1** (3 Sep 2026) via `rust-toolchain.toml`. Edition **2024** (stable since 1.85).
 
-Rust is the better core here because the loop does a lot of tool I/O, process isolation, and long-running state. You get memory safety without a GC pause, cheap threads, and a single static binary you can ship.
+Python files in this repo are a prototype archive. The supported kernel is `cargo run`.
 
-## Why Rust for this core
+## What I verified (Sep 2026)
 
-- The conversation loop, sandbox, and SQLite store are performance- and safety-critical.
-- Process env filtering and path jails are easier to audit when they are not duck-typed.
-- `cargo build --release` produces one binary: no `venv`, no interpreter.
-- Python is still useful later as a skill/runtime plugin, not as the kernel.
+- Latest stable: **1.98.1** patch for vtable codegen. [releases.rs](https://releases.rs/docs/1.98.1/)
+- Edition 2024 is the current edition; do not stay on 2021 for new code.
+- Use `Ipv4Addr::is_private` / explicit v6 checks — not a guessed `IpAddr::is_private` helper.
+- After `Child::try_wait` reaps a process, read pipes yourself. Do **not** call `wait_with_output` on the same child.
+- `serde_yaml` 0.9 still deserializes `config.yaml` but is deprecated on crates.io. Config load stays YAML for compatibility; a later swap is `serde-saphyr` once you freeze the API.
+- HTTP client is **ureq 2.12** (blocking, no Tokio required for the CLI loop).
 
-## Build
+## Build / test
 
 ```bash
-# needs Rust 1.74+
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-cd hermes-lite
+rustup show          # should print 1.98.1 from rust-toolchain.toml
+cargo test
+cargo clippy --all-targets -- -D warnings
 cargo build --release
 
 export OPENAI_API_KEY=sk-...   # or OPENROUTER_API_KEY
 ./target/release/hermes-lite chat
+./target/release/hermes-lite run "Remember I prefer Rust"
+./target/release/hermes-lite gateway --bind 127.0.0.1:8000
+./target/release/hermes-lite mcp    # JSON-RPC on stdin
 ```
 
-## Commands
+## Fixes in this pass
 
-```bash
-hermes-lite chat                 # REPL
-hermes-lite run "hello"         # one shot
-hermes-lite stats               # learning stats
-hermes-lite gateway --bind 127.0.0.1:8000
-```
-
-Gateway:
-
-```bash
-curl http://127.0.0.1:8000/health
-curl -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"Remember that I prefer Rust"}'
-```
-
-## Architecture (unchanged)
-
-```
-User → Agent loop → Context → Model
-                       ↓
-                 tool? → approval → sandbox/workspace → result → Context
-                       ↓
-                 Self-learner (skills + memory)
-```
-
-## Rust modules
-
-| Module | Role |
+| Bug | Fix |
 |---|---|
-| `agent` | 20-step tool loop |
-| `model` | OpenAI/OpenRouter chat completions |
-| `tools` | shell, files, fetch, search, memory, skills |
-| `sandbox` | filtered env + timeout |
-| `store` | SQLite sessions/messages/memories |
-| `learner` | auto SKILL.md + preference memory |
-| `network` | SSRF checks |
-| `security` | input validation, rate limit |
-| `workspace` | path jail |
+| Path jail used `canonicalize` on missing files | Component walk; reject `..` / absolute / prefix |
+| Sandbox double-wait | `try_wait` then read pipes; `kill` on timeout |
+| SSRF | `Ipv4Addr::is_private`, mapped v6, unique-local, DNS re-check |
+| Missing MCP / jobs modules | `src/mcp.rs`, `src/jobs.rs` compile and are wired |
+| Edition 2021 | Edition 2024 + `rust-version = "1.85"` |
 
-Python (`*.py`) is **legacy**. The supported entrypoint is `cargo run -- chat`.
+## Still not a 1:1 Python port
+
+Telegram/Discord bots and the FastAPI dashboard are not in this crate. The Rust binary covers the agent loop, SQLite memory, sandbox, SSRF fetch, learner, blocking HTTP gateway, and MCP-shaped stdio.
 
 ## License
 
