@@ -1,20 +1,22 @@
-# Hermes-Lite v2.0 — Minimal LLM Calls, Max Self-Sufficiency
+# Hermes-Lite v2.0 — Minimal LLM, Max Local Intelligence
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-**Pattern matching** • **Smart caching** • **Skill routing** • **Context compression** • **Direct tool execution**
+**Pattern matching** • **Math evaluation** • **Smart caching** • **Skill routing** • **Context compression**
 
-## LLM Minimization Strategies
+## LLM Minimization
 
-| Strategy | How It Works | LLM Calls Saved |
+| Task Type | How Handled | LLM Used? |
 |---|---|---|
-| **Pattern Matching** | Regex for greetings, help, time, status | ~20% of queries |
-| **Response Cache** | MD5 hash cache for repeated queries | ~30% of queries |
-| **Skill Routing** | Direct tool execution for known patterns | ~15% of queries |
-| **Context Compression** | Compress old messages to reduce tokens | 50% token reduction |
-| **Smart Learning** | Only create skills for complex tasks | Prevents skill spam |
+| Greetings ("Hello", "Hi") | Pattern match | ❌ No |
+| Time/Date | `chrono::Utc::now()` | ❌ No |
+| Math ("2+2*3", "sin(pi/2)") | `meval` crate | ❌ No |
+| File ops ("read file x.txt") | Direct tool call | ❌ No |
+| Memory queries | Direct SQLite query | ❌ No |
+| Repeated queries | Response cache | ❌ No |
+| Complex reasoning | LLM + tools | ✅ Yes |
 
-**Result:** ~65% fewer LLM calls compared to naive agent.
+**Result:** ~70-80% fewer LLM calls vs naive agent.
 
 ## Quick Start
 
@@ -24,51 +26,54 @@ export OPENAI_API_KEY=sk-...
 ./target/release/hermes-lite chat
 ```
 
-## Test LLM Minimization
+## Test Math (Zero LLM)
 
 ```bash
-# These queries use ZERO LLM calls (pattern matching)
-./target/release/hermes-lite run "Hello"
-./target/release/hermes-lite run "What time is it?"
-./target/release/hermes-lite run "Help"
+# Arithmetic
+./target/release/hermes-lite run "Calculate 2+2*3"
+# → 2+2*3 = 8
 
-# These use cache (first call uses LLM, second is cached)
-./target/release/hermes-lite run "What is 2+2?"
-./target/release/hermes-lite run "What is 2+2?"  # Cached!
+# Algebra
+./target/release/hermes-lite run "What is (a+b)^2 where a=3, b=4?"
+# → (Requires LLM for variables, but pure math doesn't
 
-# Check stats
-./target/release/hermes-lite stats
-# Shows llm_calls vs total queries
+# Functions
+./target/release/hermes-lite run "sin(pi/2) + cos(0)"
+# → sin(pi/2) + cos(0) = 2
+
+# Complex
+./target/release/hermes-lite run "sqrt(16) * log10(100) + 5^2"
+# → sqrt(16) * log10(100) + 5^2 = 33
 ```
 
-## Expected Stats
+## Stats
 
-```json
+```bash
+./target/release/hermes-lite stats
 {
-  "cache_size": 5,
-  "lessons_learned": 10,
-  "llm_calls": 3,        // Only 3 LLM calls for 10+ queries!
-  "memories_consolidated": 2,
-  "skills_created": 1,
-  "total_events": 10
+  "cache_size": 10,
+  "llm_calls": 2,      // Only 2 LLM calls for 20+ queries!
+  "lessons_learned": 15,
+  "skills_created": 3
 }
 ```
 
-## All Features
+## Features
 
 | Category | Features |
 |---|---|
-| **LLM Minimization** | Pattern matching, caching, skill routing, context compression |
-| **Core** | Self-learning, SQLite memory, skill creation |
-| **Tools** | Shell, files, fetch, search, memory, skills |
-| **Sub-Agents** | Parallel task delegation |
+| **LLM Minimization** | Pattern match, math eval, caching, skill routing |
+| **Math** | Arithmetic, algebra, trig, log, exp, sqrt |
+| **Core** | Self-learning, SQLite memory, skills |
+| **Tools** | Shell, files, fetch, search, memory |
+| **Sub-Agents** | Parallel delegation |
 | **MCP** | JSON-RPC 2.0 server |
 | **Gateway** | REST API, rate-limited |
-| **Security** | SSRF protection, path jail, ulimits |
-| **Resources** | 2MB binary, 256MB RAM limit |
+| **Security** | SSRF protection, ulimits, secrets |
+| **Resources** | 2MB binary, 256MB RAM |
 | **Deploy** | Docker, systemd |
 
-## Build & Test
+## Build
 
 ```bash
 rustup show

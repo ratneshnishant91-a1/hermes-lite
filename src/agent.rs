@@ -89,31 +89,36 @@ impl Agent {
         })
     }
 
-    /// Smart routing: pattern match → cache → skill → LLM
+    /// Smart routing: pattern → math → cache → skill → LLM
     pub fn run(&mut self, user_message: &str) -> Result<String> {
         crate::security::InputValidator::validate_message(user_message).map_err(anyhow::Error::msg)?;
         
         self.current_task = Some(user_message.chars().take(200).collect());
         self.task_start = self.context.messages.len();
 
-        // 1. Try pattern matching (no LLM)
+        // 1. Pattern matching (greetings, help, time)
         if let Some(response) = self.pattern_match(user_message) {
             return Ok(response);
         }
 
-        // 2. Try cache (no LLM)
+        // 2. Math evaluation (arithmetic, algebra, functions)
+        if let Some(math_result) = self.evaluate_math(user_message) {
+            return Ok(math_result);
+        }
+
+        // 3. Cache lookup
         let cache_key = format!("{:x}", md5::compute(user_message.as_bytes()));
         if let Some(cached) = self.cache.get(&cache_key) {
             return Ok(format!("[cached] {}", cached));
         }
 
-        // 3. Try skill execution (minimal LLM)
+        // 4. Skill execution (direct tool calls)
         if let Some(skill_response) = self.try_skill_execution(user_message)? {
             self.cache.insert(cache_key, skill_response.clone());
             return Ok(skill_response);
         }
 
-        // 4. Fall back to LLM (increment counter)
+        // 5. LLM fallback (increment counter)
         self.llm_call_count += 1;
         self.context
             .add(&self.store, json!({"role":"user","content":user_message}))?;
@@ -123,7 +128,6 @@ impl Agent {
         let mut tool_calls_made = 0;
         
         for _ in 0..15 {
-            // Compress context to reduce tokens
             let compressed = self.context.prompt_messages(20);
             let response = self.model.generate(&compressed, &self.tools.schemas())?;
             
@@ -185,50 +189,74 @@ impl Agent {
         Ok(final_text)
     }
 
-    /// Pattern matching for common queries (zero LLM)
+    /// Pattern matching for common queries
     fn pattern_match(&self, query: &str) -> Option<String> {
         let q = query.to_lowercase();
         
-        // Greetings
         if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) {
             return Some("Hello! How can I help you today?".into());
         }
-        
-        // Thanks
         if Regex::new(r"(thank|thanks)").unwrap().is_match(&q) {
-            return Some("You're welcome! Let me know if you need anything else.".into());
+            return Some("You're welcome!".into());
         }
-        
-        // Help
-        if Regex::new(r"^(help|what can you do|capabilities)").unwrap().is_match(&q) {
-            return Some("I can: execute shell commands, read/write files, fetch URLs, search the web, save memories, and create skills. Just ask!".into());
+        if Regex::new(r"^(help|what can you do)").unwrap().is_match(&q) {
+            return Some("I can: execute shell commands, read/write files, fetch URLs, search web, save memories, create skills, evaluate math. Just ask!".into());
         }
-        
-        // Status
-        if Regex::new(r"(status|health|are you ok|working)").unwrap().is_match(&q) {
-            return Some("I'm running normally. All systems operational.".into());
+        if Regex::new(r"(status|health|are you ok)").unwrap().is_match(&q) {
+            return Some("All systems operational.".into());
         }
-        
-        // Time
         if Regex::new(r"(what time|current time|date now)").unwrap().is_match(&q) {
-            let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string();
-            return Some(format!("Current time: {}", now));
+            return Some(format!("Current time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
         }
-        
         None
     }
 
-    /// Try to execute skills directly without full LLM conversation
+    /// Evaluate math expressions locally (no LLM)
+    fn evaluate_math(&self, query: &str) -> Option<String> {
+        // Extract math expression from query
+        let patterns = [
+            Regex::new(r"calculate\s+(.+)").unwrap(),
+            Regex::new(r"what is\s+(.+[+\-*/^].+)").unwrap(),
+            Regex::new(r"solve\s+(.+)").unwrap(),
+            Regex::new(r"eval(uate)?\s+(.+)").unwrap(),
+        ];
+        
+        let expr = patterns.iter()
+            .filter_map(|re| re.captures(query).and_then(|c| c.get(1).map(|m| m.as_str())))
+            .next()
+            .or_else(|| {
+                // If query is purely mathematical (e.g., "2+2*3")
+                if query.chars().any(|c| "+-*/^().".contains(c)) && query.chars().any(|c| c.is_digit(10)) {
+                    Some(query)
+                } else {
+                    None
+                }
+            })?;
+        
+        // Evaluate with meval crate
+        match meval::eval_str(expr) {
+            Ok(result) => {
+                // Format nicely (remove trailing zeros)
+                let formatted = if result.fract() == 0.0 {
+                    format!("{}", result as i64)
+                } else {
+                    format!("{:.6}", result).trim_end_matches('0').trim_end_matches('.').to_string()
+                };
+                Some(format!("{} = {}", expr, formatted))
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// Direct skill/tool execution
     fn try_skill_execution(&self, query: &str) -> Result<Option<String>> {
         let q = query.to_lowercase();
         
-        // Direct file operations
         if let Some(path) = Regex::new(r"read file (\S+)").unwrap().captures(&q).and_then(|c| c.get(1)) {
             let result = self.tools.execute("read_file", &json!({"path": path.as_str()}))?;
             return Ok(Some(format!("File content: {}", result)));
         }
         
-        // Direct memory queries
         if let Some(mem_query) = Regex::new(r"(remember|memory|recall) (.+)").unwrap().captures(&q).and_then(|c| c.get(2)) {
             let results = self.store.search_memories(mem_query.as_str(), 5)?;
             if results.is_empty() {
