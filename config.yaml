@@ -1,0 +1,85 @@
+gateway:
+  enabled: false
+  host: "127.0.0.1"
+  port: 8000
+  telegram_token: ""
+  telegram_allowed_users: []
+  telegram_allow_all: false
+  discord_token: ""
+  discord_guild_id: ""
+  discord_allowed_users: []
+  discord_allow_all: false
+  allowed_users: []
+  allow_all: false
+  require_auth: true
+
+sandbox:
+  mode: "docker"
+  timeout: 30
+  memory_limit_mb: 512
+  cpu_limit: 1.0
+  network_enabled: false
+  workspace_only: true
+  docker_image: "python:3.11-slim"
+  docker_forward_env: []
+
+observability:
+  enabled: true
+  log_level: "INFO"
+  log_file: "hermes-lite.log"
+  metrics_enabled: true
+  tracing_enabled: false
+  retention_days: 7
+  redact_secrets: true
+
+model:
+  providers:
+    - name: "openrouter"
+      priority: 1
+      enabled: true
+    - name: "openai"
+      priority: 2
+      enabled: true
+    - name: "anthropic"
+      priority: 3
+      enabled: true
+    - name: "gemini"
+      priority: 4
+      enabled: true
+    - name: "local"
+      priority: 5
+      enabled: false
+  default_model: "gpt-4.1-mini"
+  max_tokens: 4096
+  fallback_providers: []
+
+approvals:
+  mode: "manual"
+  hardline_patterns:
+    - '\brm\s+-[^\s]*r\s+/'
+    - '\bmkfs\b'
+    - '\bdd\s+if='
+    - '\b:()\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;'
+    - '\bkill\s+-1\s+1\b'
+    - '\bshutdown\b.*-h'
+    - '\breboot\b'
+  dangerous_patterns:
+    - '\brm\s+-[^\s]*r'
+    - '\bchmod\s+(777|666|a\+w|o\+w)'
+    - '\bDROP\s+(TABLE|DATABASE)\b'
+    - '\bDELETE\s+FROM\b(?!.*\bWHERE\b)'
+    - '\bTRUNCATE\s+(TABLE)?\s*\w'
+    - '\b(curl|wget)\b.*\|\s*(ba)?sh\b'
+    - '\bbash\s+-c\b'
+    - '\bpython\s+-c\b'
+    - '\bsudo\b'
+    - '\bpasswd\b'
+    - '\bvisudo\b'
+    - '\bssh\b.*@'
+    - '\bscp\b'
+    - '\brsync\b.*@'
+
+workspace_root: "workspace"
+db_path: "hermes.db"
+skills_root: "skills"
+mcp_servers: {}
