@@ -54,6 +54,7 @@ impl Model {
 }
 
 fn resolve_endpoint(model: &str) -> Result<(String, String, String, String)> {
+    // Priority: OpenRouter > OpenAI
     if let Ok(key) = env::var("OPENROUTER_API_KEY") {
         return Ok((
             "https://openrouter.ai/api/v1/chat/completions".into(),
@@ -70,7 +71,7 @@ fn resolve_endpoint(model: &str) -> Result<(String, String, String, String)> {
             model.to_string(),
         ));
     }
-    bail!("Set OPENAI_API_KEY or OPENROUTER_API_KEY")
+    bail!("Set OPENAI_API_KEY or OPENROUTER_API_KEY environment variable")
 }
 
 #[derive(serde::Deserialize)]
