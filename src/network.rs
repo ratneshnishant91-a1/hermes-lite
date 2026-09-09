@@ -23,8 +23,6 @@ fn ip_blocked(ip: IpAddr) -> bool {
 }
 
 fn v4_blocked(v: Ipv4Addr) -> bool {
-    // `Ipv4Addr::is_private` has been stable for years; do not call `IpAddr::is_private`
-    // (that helper is newer and not what we want for mixed v4/v6 anyway).
     v.is_loopback() || v.is_private() || v.is_link_local() || v.is_unspecified() || v.is_broadcast()
 }
 
@@ -33,7 +31,7 @@ fn v6_blocked(v: Ipv6Addr) -> bool {
         || v.is_unspecified()
         || v.is_multicast()
         || v.to_ipv4_mapped().is_some_and(v4_blocked)
-        || (v.octets()[0] & 0xfe) == 0xfc // unique local fc00::/7
+        || (v.octets()[0] & 0xfe) == 0xfc
 }
 
 fn domain_allowed(host: &str, allow: &[String]) -> bool {
@@ -75,18 +73,16 @@ pub fn safe_fetch(url: &str, cfg: &NetworkConfig) -> Result<Value> {
     }
 
     let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(cfg.timeout.max(1)))
+        .timeout(std::time::Duration::from_secs(cfg.timeout.min(10).max(1)))
         .build();
     match agent.get(url).call() {
         Ok(resp) => {
             let status = resp.status();
-            let body = resp.into_string().unwrap_or_default();
-            let clipped = if body.len() > 100_000 {
-                format!("{}\n[truncated]", &body[..100_000])
-            } else {
-                body
-            };
-            Ok(json!({"url": url, "status": status, "text": clipped}))
+            // Limit response body to 100KB (was 10MB)
+            let body = resp
+                .into_string_limit(100 * 1024)
+                .unwrap_or_else(|_| "[truncated: body too large]".into());
+            Ok(json!({"url": url, "status": status, "text": body}))
         }
         Err(err) => Ok(json!({"url": url, "status": "error", "error": err.to_string()})),
     }

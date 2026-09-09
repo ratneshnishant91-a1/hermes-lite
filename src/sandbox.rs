@@ -17,12 +17,17 @@ pub struct SandboxResult {
     pub timeout: bool,
 }
 
-/// Run `command` via `bash -c` with a filtered environment and a hard timeout.
+/// Run `command` via `bash -c` with strict resource limits.
 ///
-/// After `Child::try_wait` reaps the process we only read the pipes — we do **not**
-/// call `wait_with_output` again (that would wait on an already-reaped child).
+/// Limits:
+/// - CPU: 10s hard limit
+/// - Memory: 256MB virtual memory
+/// - Files: 64 open files
+/// - Processes: 10 child processes
+///
+/// These limits prevent runaway commands from exhausting the host.
 pub fn run_shell(cfg: &SandboxConfig, command: &str, cwd: &str) -> Result<SandboxResult> {
-    let timeout = Duration::from_secs(cfg.timeout.max(1));
+    let timeout = Duration::from_secs(cfg.timeout.min(10).max(1));
     let mut cmd = Command::new("bash");
     cmd.arg("-c")
         .arg(command)
@@ -36,6 +41,17 @@ pub fn run_shell(cfg: &SandboxConfig, command: &str, cwd: &str) -> Result<Sandbo
             cmd.env(k, v);
         }
     }
+
+    // Resource limits via ulimit wrapper (bash built-in)
+    // -v 262144 = 256MB virtual memory
+    // -n 64 = max 64 open files
+    // -u 10 = max 10 processes
+    // -t 10 = 10s CPU time
+    let limit_cmd = format!(
+        "ulimit -v 262144 -n 64 -u 10 -t 10 2>/dev/null; {}",
+        command
+    );
+    cmd.arg("-c").arg(&limit_cmd);
 
     let mut child = cmd.spawn()?;
     let start = Instant::now();

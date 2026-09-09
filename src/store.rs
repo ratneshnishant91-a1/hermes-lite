@@ -21,6 +21,14 @@ pub struct Store {
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let db = Connection::open(path)?;
+        // Performance pragmas (WAL mode, memory-mapped I/O)
+        db.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA temp_store=MEMORY;
+             PRAGMA cache_size=-16384;
+             PRAGMA mmap_size=268435456;",
+        )?;
         db.execute_batch(
             "PRAGMA foreign_keys = ON;
              CREATE TABLE IF NOT EXISTS sessions (
@@ -130,16 +138,13 @@ impl Store {
 
     /// Dump entire DB as SQL to stdout (for backup)
     pub fn backup(&self, out: &mut dyn Write) -> Result<()> {
-        let mut backup_conn = rusqlite::Connection::open(self.db.path())?;
-        backup_conn.execute("VACUUM INTO ?", [":memory:"])?;
-        // Simple dump: iterate tables
         for table in ["sessions", "messages", "memories"] {
-            let mut stmt = backup_conn.prepare(&format!("SELECT * FROM {table}"))?;
+            let mut stmt = self.db.prepare(&format!("SELECT * FROM {table}"))?;
             let rows = stmt.query_map([], |r| {
                 let mut values = Vec::new();
                 for i in 0..r.as_ref().column_count() {
                     let v: String = r.get(i)?;
-                    values.push(v);
+                    values.push(format!("'{}'", v.replace("'", "''")));
                 }
                 Ok(values)
             })?;
