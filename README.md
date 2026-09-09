@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-Pinned to **rustc 1.98.1** (3 Sep 2026). Edition **2024**. **Security-hardened**.
+Pinned to **rustc 1.98.1** (3 Sep 2026). Edition **2024**. **Security-hardened**. **Introspectable**.
 
 ## Quick Start
 
@@ -22,31 +22,46 @@ agent = Agent()
 print(agent.run("Remember I prefer Rust"))
 ```
 
-### 3. Docker (Hardened)
+### 3. Docker Compose (Production)
 
 ```bash
-docker build -t hermes-lite:latest .
-docker run --rm -it \
-  --read-only --cap-drop=ALL --tmpfs /tmp \
-  -e OPENAI_API_KEY=sk-... -p 8000:8000 hermes-lite:latest
+cp .env.example .env
+# Edit .env with your API key
+docker compose up -d
+```
+
+## Introspection (See What It Learned)
+
+```bash
+# View recent memories
+./target/release/hermes-lite memories 20
+
+# List learned skills
+./target/release/hermes-lite skills
+
+# Backup state
+./target/release/hermes-lite backup > backup.sql
+
+# Stats
+./target/release/hermes-lite stats
 ```
 
 ## Hardening Features
 
 | Layer | Measure |
 |---|---|
-| **Secrets** | API keys wrapped in `secrecy::Secret` (never logged) |
+| **Secrets** | API keys wrapped in `secrecy::Secret` |
 | **Input** | Path traversal, control chars, length limits |
-| **Gateway** | Rate-limited (60 req/min/IP), body size limited |
-| **Logging** | Structured JSON (`RUST_LOG_JSON=1`), panic hook |
-| **Container** | Distroless, non-root, read-only FS, `cap_drop=ALL` |
-| **Dependencies** | `cargo-audit` in CI |
+| **Gateway** | Rate-limited (60 req/min/IP) |
+| **Logging** | Structured JSON (`RUST_LOG_JSON=1`) |
+| **Container** | Distroless, non-root, read-only, `cap_drop=ALL` |
+| **State** | SQLite backup/restore, volumes |
 
 ## Build / test
 
 ```bash
 rustup show
-make ci              # fmt, lint, audit, test, build
+make ci
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo audit
@@ -55,20 +70,9 @@ cargo audit
 ## Production Deployment
 
 ```bash
-# Build
-docker build -t hermes-lite:latest .
-
-# Run (hardened)
-docker run --rm -d \
-  --name hermes \
-  --read-only \
-  --cap-drop=ALL \
-  --tmpfs /tmp \
-  --health-cmd='./hermes-lite run healthcheck' \
-  --health-interval=30s \
-  -e OPENAI_API_KEY=sk-... \
-  -p 8000:8000 \
-  hermes-lite:latest
+docker compose up -d
+# Gateway on http://localhost:8000
+# Data persisted in Docker volumes
 ```
 
 ## License
