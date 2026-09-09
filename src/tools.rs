@@ -6,17 +6,16 @@ use crate::store::Store;
 use crate::workspace::Workspace;
 use anyhow::{bail, Result};
 use serde_json::{json, Value};
-use std::sync::Arc;
 
 pub struct ToolRegistry {
     cfg: Config,
     workspace: Workspace,
-    store: Arc<Store>,
+    store: Store,
     skills: Skills,
 }
 
 impl ToolRegistry {
-    pub fn new(cfg: Config, workspace: Workspace, store: Arc<Store>, skills: Skills) -> Self {
+    pub fn new(cfg: Config, workspace: Workspace, store: Store, skills: Skills) -> Self {
         Self {
             cfg,
             workspace,
@@ -26,30 +25,39 @@ impl ToolRegistry {
     }
 
     pub fn schemas(&self) -> Vec<Value> {
-        ["shell", "read_file", "write_file", "fetch_url", "web_search", "memory_save", "memory_search", "skill_load"]
-            .into_iter()
-            .map(|name| {
-                json!({
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": name,
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "command": {"type": "string"},
-                                "path": {"type": "string"},
-                                "content": {"type": "string"},
-                                "url": {"type": "string"},
-                                "query": {"type": "string"},
-                                "name": {"type": "string"},
-                                "limit": {"type": "integer"}
-                            }
+        [
+            ("shell", "Execute a shell command in the workspace."),
+            ("read_file", "Read a text file from the workspace."),
+            ("write_file", "Write a text file to the workspace."),
+            ("fetch_url", "Fetch a web page over HTTPS."),
+            ("web_search", "Search the web via DuckDuckGo."),
+            ("memory_save", "Save a long-term fact."),
+            ("memory_search", "Search long-term memory."),
+            ("skill_load", "Load a SKILL.md by name."),
+        ]
+        .into_iter()
+        .map(|(name, description)| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string"},
+                            "path": {"type": "string"},
+                            "content": {"type": "string"},
+                            "url": {"type": "string"},
+                            "query": {"type": "string"},
+                            "name": {"type": "string"},
+                            "limit": {"type": "integer"}
                         }
                     }
-                })
+                }
             })
-            .collect()
+        })
+        .collect()
     }
 
     pub fn execute(&self, name: &str, args: &Value) -> Result<Value> {
@@ -75,7 +83,7 @@ impl ToolRegistry {
             }
             "web_search" => {
                 let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let encoded = urlencoding_lite(query);
+                let encoded = encode(query);
                 let url = format!("https://html.duckduckgo.com/html/?q={encoded}");
                 Ok(safe_fetch(&url, &self.cfg.network)?)
             }
@@ -97,7 +105,7 @@ impl ToolRegistry {
     }
 }
 
-fn urlencoding_lite(s: &str) -> String {
+fn encode(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
