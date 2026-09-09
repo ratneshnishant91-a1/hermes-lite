@@ -25,7 +25,7 @@ const SYSTEM: &str = r#"You are Hermes-Lite v2.0, a self-learning autonomous age
 pub struct Goal {
     pub id: String,
     pub description: String,
-    pub status: String, // pending, running, completed, failed
+    pub status: String,
     pub plan: Vec<String>,
     pub current_step: usize,
 }
@@ -48,7 +48,6 @@ pub struct Agent {
     current_task: Option<String>,
     cache: HashMap<String, String>,
     llm_call_count: u64,
-    goals: Vec<Goal>,
     constraints: Constraints,
 }
 
@@ -71,15 +70,16 @@ impl Agent {
             }
         }
         let context = Context::load(&store, session_id, &prompt)?;
-        let tools = ToolRegistry::new(
-            cfg.clone(),
-            workspace,
-            Store::open(&cfg.db_path)?,
-            skills.clone(),
-        );
+        let tools = ToolRegistry::new(cfg.clone(), workspace, Store::open(&cfg.db_path)?, skills.clone());
         let learner = SelfLearner::load(&cfg.workspace_root)?;
         let model = Model::new(&cfg.model.default_model);
-        let constraints = Constraints::default();
+        let mut constraints = Constraints::default();
+        if let Some(v) = store.get_constraint("avoid_network")? {
+            constraints.avoid_network = v == "true";
+        }
+        if let Some(v) = store.get_constraint("prefer_rust")? {
+            constraints.prefer_rust = v == "true";
+        }
         Ok(Self {
             store,
             skills,
@@ -91,7 +91,6 @@ impl Agent {
             current_task: None,
             cache: HashMap::new(),
             llm_call_count: 0,
-            goals: Vec::new(),
             constraints,
         })
     }
@@ -111,58 +110,44 @@ impl Agent {
             "memories_consolidated": self.learner.log.memories_consolidated.len(),
             "lessons_learned": self.learner.log.lessons_learned.len(),
             "cache_size": self.cache.len(),
-            "llm_calls": self.llm_call_count,
-            "active_goals": self.goals.len()
+            "llm_calls": self.llm_call_count
         })
     }
 
-    /// Agentic loop: goals → pattern/math/cache → plan → tools → reflect → learn
     pub fn run(&mut self, user_message: &str) -> Result<String> {
         crate::security::InputValidator::validate_message(user_message).map_err(anyhow::Error::msg)?;
-        
         self.current_task = Some(user_message.chars().take(200).collect());
         self.task_start = self.context.messages.len();
 
-        // 0. Maintain goal stack (simple: push new goal if task looks like a goal)
-        if self.goals.is_empty() || self.goals.iter().all(|g| g.status == "completed" || g.status == "failed") {
-            self.goals.push(Goal {
-                id: uuid::Uuid::new_v4().to_string(),
-                description: user_message.to_string(),
-                status: "running".into(),
-                plan: vec!["Understand task".into(), "Execute".into(), "Verify".into()],
-                current_step: 0,
-            });
-        }
-
-        // 1. Pattern matching (greetings, help, time)
+        // 1. Pattern match
         if let Some(response) = self.pattern_match(user_message) {
             return Ok(response);
         }
 
-        // 2. Math (symbolic or natural-language)
+        // 2. Math
         if let Some(math_result) = math::evaluate_query(user_message) {
             return Ok(math_result);
         }
 
-        // 3. Cache lookup
+        // 3. Cache
         let cache_key = format!("{:x}", md5::compute(user_message.as_bytes()));
         if let Some(cached) = self.cache.get(&cache_key) {
             return Ok(format!("[cached] {}", cached));
         }
 
-        // 4. Skill retrieval & auto-apply (before LLM)
+        // 4. Skill retrieval
         if let Some(skill_response) = self.try_apply_skill(user_message)? {
             self.cache.insert(cache_key, skill_response.clone());
             return Ok(skill_response);
         }
 
-        // 5. Direct skill/tool execution (deterministic)
+        // 5. Direct tool execution
         if let Some(skill_response) = self.try_skill_execution(user_message)? {
             self.cache.insert(cache_key, skill_response.clone());
             return Ok(skill_response);
         }
 
-        // 6. LLM with explicit plan & reflection hooks
+        // 6. LLM with reflection & constraints
         self.llm_call_count += 1;
         self.context.add(&self.store, json!({"role":"user","content":user_message}))?;
 
@@ -170,87 +155,53 @@ impl Agent {
         let mut success = false;
         let mut tool_calls_made = 0;
         let mut last_error: Option<String> = None;
-        
-        for turn in 0..15 {
-            // Compress context to reduce tokens
+
+        for _turn in 0..15 {
             let compressed = self.context.prompt_messages(20);
-            
-            // Inject plan & reflection hints
             let mut augmented = compressed.clone();
-            if let Some(goal) = self.goals.iter().find(|g| g.status == "running") {
-                augmented.push(json!({
-                    "role":"system",
-                    "content":format!("Active goal: {}\nPlan: {:?}\nCurrent step: {}", goal.description, goal.plan, goal.current_step)
-                }));
-            }
             if let Some(err) = &last_error {
-                augmented.push(json!({
-                    "role":"system",
-                    "content":format!("Last error: {}. Reflect and revise plan.", err)
-                }));
+                augmented.push(json!({"role":"system","content":format!("Last error: {}. Reflect and revise.", err)}));
+            }
+            if self.constraints.avoid_network {
+                augmented.push(json!({"role":"system","content":"Constraint: avoid network tools (fetch_url, web_search)."}));
             }
 
             let response = self.model.generate(&augmented, &self.tools.schemas())?;
-            
+
             if response.tool_calls.is_empty() {
                 final_text = response.text.unwrap_or_default();
                 self.context.add(&self.store, json!({"role":"assistant","content":final_text}))?;
                 success = true;
                 break;
             }
-            
+
             for call in response.tool_calls {
                 let name = call["function"]["name"].as_str().unwrap_or("").to_string();
                 let args: Value = match call["function"]["arguments"].as_str() {
                     Some(s) => serde_json::from_str(s).unwrap_or(json!({})),
                     None => call["function"]["arguments"].clone(),
                 };
-                
-                // Enforce constraints
-                if self.constraints.avoid_network && ["fetch_url", "web_search"].contains(&name.as_str()) {
+
+                if self.constraints.avoid_network && ["fetch_url","web_search"].contains(&name.as_str()) {
                     last_error = Some("Network tools disabled by constraints.".into());
                     continue;
                 }
-                
+
                 let result = if !approve(&name, &args) {
                     json!("Tool execution rejected.")
                 } else {
                     match self.tools.execute(&name, &args) {
-                        Ok(v) => {
-                            tool_calls_made += 1;
-                            v
-                        }
-                        Err(err) => {
-                            // Retry once on transient error
-                            last_error = Some(err.to_string());
-                            json!({"error": last_error.clone().unwrap()})
-                        }
+                        Ok(v) => { tool_calls_made += 1; v }
+                        Err(err) => { last_error = Some(err.to_string()); json!({"error": err.to_string()}) }
                     }
                 };
                 self.context.add(&self.store, json!({"role":"assistant","tool_calls":[call.clone()]}))?;
-                self.context.add(
-                    &self.store,
-                    json!({
-                        "role":"tool",
-                        "tool_call_id": call.get("id").cloned().unwrap_or(json!("call")),
-                        "name": name,
-                        "content": result.to_string()
-                    }),
-                )?;
-            }
-            
-            // Update goal step
-            if let Some(goal) = self.goals.iter_mut().find(|g| g.status == "running") {
-                goal.current_step = (goal.current_step + 1).min(goal.plan.len());
-                if goal.current_step >= goal.plan.len() {
-                    goal.status = "completed".into();
-                }
+                self.context.add(&self.store, json!({"role":"tool","tool_call_id":call.get("id").cloned().unwrap_or(json!("call")),"name":name,"content":result.to_string()}))?;
             }
         }
-        
+
         self.cache.insert(cache_key, final_text.clone());
-        
-        // Learn only if meaningful interaction
+
         if tool_calls_made > 0 {
             if let Some(task) = self.current_task.clone() {
                 let start = self.task_start.min(self.context.messages.len());
@@ -258,44 +209,26 @@ impl Agent {
                 let _ = self.learner.learn(&self.store, &self.skills, &task, &msgs, &final_text, success);
             }
         }
-        
+
         self.current_task = None;
         Ok(final_text)
     }
 
     fn pattern_match(&self, query: &str) -> Option<String> {
         let q = query.to_lowercase();
-        if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) {
-            return Some("Hello! How can I help you today?".into());
-        }
-        if Regex::new(r"(thank|thanks)").unwrap().is_match(&q) {
-            return Some("You're welcome!".into());
-        }
-        if Regex::new(r"^(help|what can you do)").unwrap().is_match(&q) {
-            return Some("I can: execute shell commands, read/write files, fetch URLs, search web, save memories, create skills, evaluate math. Just ask!".into());
-        }
-        if Regex::new(r"(status|health|are you ok)").unwrap().is_match(&q) {
-            return Some("All systems operational.".into());
-        }
-        if Regex::new(r"(what time|current time|date now)").unwrap().is_match(&q) {
-            return Some(format!("Current time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")));
-        }
+        if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) { return Some("Hello! How can I help you today?".into()); }
+        if Regex::new(r"(thank|thanks)").unwrap().is_match(&q) { return Some("You're welcome!".into()); }
+        if Regex::new(r"^(help|what can you do)").unwrap().is_match(&q) { return Some("I can: execute shell commands, read/write files, fetch URLs, search web, save memories, create skills, evaluate math. Just ask!".into()); }
+        if Regex::new(r"(status|health|are you ok)").unwrap().is_match(&q) { return Some("All systems operational.".into()); }
+        if Regex::new(r"(what time|current time|date now)").unwrap().is_match(&q) { return Some(format!("Current time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))); }
         None
     }
 
-    /// Retrieve & apply relevant skill before calling LLM
     fn try_apply_skill(&self, query: &str) -> Result<Option<String>> {
-        // Simple keyword match against skill names/descriptions
-        let skills_text = self.skills.catalog_text();
-        let q = query.to_lowercase();
-        for line in skills_text.lines() {
-            if line.starts_with("- ") && line.contains(&q) {
-                // Extract skill name
-                if let Some(name) = line.strip_prefix("- ").and_then(|s| s.split(':').next()) {
-                    let skill_content = self.skills.load(name.trim())?;
-                    return Ok(Some(format!("[skill: {}]\n{}", name, skill_content)));
-                }
-            }
+        let relevant = self.skills.find_relevant(query);
+        if let Some(name) = relevant.first() {
+            let content = self.skills.load(name)?;
+            return Ok(Some(format!("[skill: {}]\n{}", name, content)));
         }
         Ok(None)
     }
@@ -308,19 +241,17 @@ impl Agent {
         }
         if let Some(mem_query) = Regex::new(r"(remember|memory|recall) (.+)").unwrap().captures(&q).and_then(|c| c.get(2)) {
             let results = self.store.search_memories(mem_query.as_str(), 5)?;
-            if results.is_empty() {
-                return Ok(Some("No matching memories found.".into()));
-            }
+            if results.is_empty() { return Ok(Some("No matching memories found.".into())); }
             return Ok(Some(format!("Memories: {}", results.join(" | "))));
         }
         Ok(None)
     }
 
-    pub fn list_goals(&self) -> Vec<Goal> {
-        self.goals.clone()
+    pub fn list_goals(&self) -> Result<Vec<crate::store::GoalRecord>> {
+        self.store.list_goals()
     }
 
-    pub fn clear_completed_goals(&mut self) {
-        self.goals.retain(|g| g.status != "completed");
+    pub fn set_constraint(&self, key: &str, value: &str) -> Result<()> {
+        self.store.set_constraint(key, value)
     }
 }
