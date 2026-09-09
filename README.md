@@ -1,8 +1,8 @@
-# Hermes-Lite v1.5 — Hardened Self-Learning AI Agent
+# Hermes-Lite v2.0 — Complete Autonomous AI Platform
 
-🚀 **Production-hardened autonomous AI agent with self-learning and secure internet access**
+🚀 **Production-ready self-learning AI agent with full enterprise features**
 
-## ✨ Key Features
+## ✨ Complete Feature Set
 
 ### 🧠 Self-Learning (USP)
 - Automatic skill creation from tasks
@@ -11,11 +11,11 @@
 - Continuous improvement
 
 ### 🌐 Secure Internet Access
-- **SSRF protection** - Blocks private/internal IPs
-- **Domain allowlists** - Whitelist specific domains
-- **Port blocking** - Prevents access to sensitive ports
-- **Response size limits** - Prevents DoS
-- **Network audit logging** - All requests logged
+- SSRF protection
+- Domain allowlists
+- Port blocking
+- Response size limits
+- Network audit logging
 
 ### 🛡️ Production Hardening
 - Input validation, Docker sandboxing
@@ -24,8 +24,36 @@
 - Resource quotas
 
 ### 🎨 Web Dashboard
-- Real-time metrics, security audit viewer
-- Learning statistics, health monitoring
+- Real-time metrics
+- Security audit viewer
+- Learning statistics
+- Health monitoring
+
+### 🚀 Gateway API
+- REST API with authentication
+- Telegram bot integration
+- Discord support (configurable)
+- Token-based auth
+
+### 🔌 MCP Server
+- Model Context Protocol support
+- Compatible with Cursor, Claude Code
+- JSON-RPC 2.0 over stdio
+
+### 🤖 Sub-Agent Delegation
+- Parallel task execution
+- Isolated sub-agents
+- Task monitoring
+
+### ⚡ Background Tasks
+- Async tool execution
+- Non-blocking operations
+- Task queue management
+
+### ⏰ Cron Scheduler
+- Scheduled tasks
+- Recurring jobs
+- Persistent scheduling
 
 ## Quick Start
 
@@ -34,119 +62,72 @@ git clone https://github.com/ratneshnishant91-a1/hermes-lite.git
 cd hermes-lite
 pip install -r requirements.txt
 export OPENAI_API_KEY="sk-..."
-python demo.py
+python main.py
 ```
 
-## Internet Access
+## Gateway API
 
-### Default: Disabled (Secure)
+```bash
+python main.py --gateway
+# http://127.0.0.1:8000
 
-By default, network access is **disabled** for maximum security:
+# Create token
+curl http://127.0.0.1:8000/token -H "Content-Type: application/json" -d '{"user_id":"default"}'
+
+# Chat
+curl http://127.0.0.1:8000/chat -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d '{"message":"Hello"}'
+```
+
+## Telegram Bot
 
 ```yaml
-network:
-  enabled: false  # Default
+# config.yaml
+gateway:
+  telegram_token: "123456:ABC-DEF..."
+  telegram_allowed_users: [123456789]
 ```
 
-### Enable Internet Access
+## MCP Integration
 
-```yaml
-network:
-  enabled: true
-  allowed_domains: []  # Empty = all domains (caution!)
-  blocked_ports: [22, 23, 25, 53, 135, 139, 445, ...]
-  max_response_size: 10485760  # 10MB
-  timeout: 30
+```bash
+python main.py --mcp
+# Use with Cursor, Claude Code, etc.
 ```
 
-### Domain Allowlist (Recommended)
-
-```yaml
-network:
-  enabled: true
-  allowed_domains:
-    - "api.github.com"
-    - "raw.githubusercontent.com"
-    - "pypi.org"
-    - "docs.python.org"
-    - "html.duckduckgo.com"
-```
-
-### SSRF Protection
-
-Automatically blocks:
-- Private IPs (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
-- Localhost (127.0.0.1, ::1)
-- Internal networks (fc00::/7)
-
-### Usage Example
-
-```python
-from network import NetworkConfig, safe_fetch_url
-
-config = NetworkConfig(
-    enabled=True,
-    allowed_domains=["api.github.com"],
-    timeout=30,
-)
-
-result = safe_fetch_url("https://api.github.com/repos/torvalds/linux", config)
-print(result["content"][:500])
-```
-
-## Security Features
-
-### 1. Input Validation
-```python
-from security import InputValidator
-valid, error = InputValidator.validate_user_message(user_input)
-```
-
-### 2. Docker Sandboxing
-```yaml
-sandbox:
-  mode: "docker"
-  network_enabled: false  # Isolated from network
-```
-
-### 3. Rate Limiting
-```python
-from security import RateLimiter
-limiter = RateLimiter(max_requests=100, window_seconds=60)
-```
-
-### 4. Audit Logging
-```python
-from security import AuditLogger
-audit = AuditLogger()
-audit.log_tool_execution("fetch_url", {"url": "..."}, "user-123")
-```
-
-### 5. Health Checks
-```python
-from health import HealthChecker
-health = HealthChecker(config)
-readiness = health.check_readiness()
-```
-
-## Self-Learning Example
+## Sub-Agent Delegation
 
 ```python
 from agent import Agent
-
 agent = Agent()
 
-# Task 1: Create file
-agent.run("Create a Python file")
-# → Auto-creates skill
+# Delegate task
+result = agent.delegate("Research Python best practices")
+print(f"Task {result['task_id']}: {result['status']}")
 
-# Task 2: Similar task
-agent.run("Create another file")
-# → Uses learned skill!
+# Check status
+status = agent.get_delegation_status(task_id)
+print(status)
+```
 
-# Check learning
-stats = agent.get_learning_stats()
-print(stats)
+## Background Tasks
+
+```python
+# Execute in background
+result = agent.background_execute("shell", {"command": "sleep 10"})
+print(f"Task {result['task_id']}: {result['status']}")
+```
+
+## Cron Scheduler
+
+```python
+# Schedule recurring task
+result = agent.add_cron_job("daily-backup", "daily", "shell", {"command": "tar -czf backup.tar.gz workspace/"})
+print(f"Scheduled: {result['job_id']} - next: {result['next_run']}")
+
+# List jobs
+jobs = agent.list_cron_jobs()
+for job in jobs:
+    print(f"{job['name']}: {job['schedule']} - next: {job['next_run']}")
 ```
 
 ## Dashboard
@@ -156,43 +137,26 @@ python dashboard.py
 # http://127.0.0.1:8080
 ```
 
-- Real-time metrics
-- Security audit logs
-- Network access logs
-- Learning stats
-
-## Production Deployment
+## Docker Deployment
 
 ```bash
 docker build -t hermes-lite .
-docker run -d -p 8080:8080 \
-  --memory=512m \
-  --cpus=1.0 \
-  -e OPENAI_API_KEY=sk-... \
-  hermes-lite
-
-# Health check
-curl http://localhost:8080/health
+docker run -d -p 8000:8000 -p 8080:8080 -e OPENAI_API_KEY=sk-... hermes-lite
 ```
-
-## Security Checklist
-
-- [ ] Docker sandbox enabled
-- [ ] Network: disabled or allowlisted
-- [ ] Rate limiting configured
-- [ ] API auth enabled
-- [ ] Audit logging active
-- [ ] Health checks monitored
-- [ ] Resource quotas set
 
 ## Files
 
-- `network.py` - Secure internet access (SSRF protection)
-- `security.py` - Input validation, audit logging, rate limiting
-- `health.py` - Liveness/readiness probes
-- `learner.py` - Self-learning engine
-- `agent.py` - Hardened agent
-- `sandbox.py` - Docker isolation
+- `agent.py` - Self-learning agent
+- `gateway.py` - REST API + Telegram
+- `mcp_server.py` - MCP server
+- `agents.py` - Sub-agent delegation
+- `background.py` - Async tasks
+- `cron.py` - Cron scheduler
+- `sandbox.py` - Docker sandboxing
+- `router.py` - Multi-provider router
+- `security.py` - Security hardening
+- `learner.py` - Self-learning
+- `network.py` - Secure internet
 - `dashboard.py` - Web UI
 
 ## License
@@ -201,4 +165,4 @@ MIT
 
 ## Acknowledgments
 
-Security patterns from [Hermes Agent](https://github.com/NousResearch/hermes-agent).
+Architecture inspired by [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
