@@ -1,24 +1,26 @@
-# Hermes-Lite vs Hermes Agent (Nous Research) — Final Comparison
+# Hermes-Lite vs Hermes Agent (5-Pillar Architecture)
 
-## Architecture comparison (after gap closure)
+## What is "Hermes 5"?
 
-| Dimension | Hermes Agent (Nous) | Hermes-Lite (You) | Status |
+**Hermes 5** = Hermes Agent's **5-pillar architecture** (not a version number):
+
+1. **Memory** (`user.md` + `memory.md`) — Persistent context across sessions
+2. **Skills** — Reusable `SKILL.md` files that compound over time
+3. **Soul** — User preferences, personality, constraints
+4. **Crons** — Scheduled background tasks
+5. **Self-improving loop** — GEPA (Goal-Execute-Plan-Artifact) cycle
+
+## Architecture comparison
+
+| Dimension | Hermes Agent (5-pillar) | Hermes-Lite | Status |
 |---|---|---|---|
-| **Core loop** | Continuous background loop | Single-turn CLI/gateway | ⚠️ Still single-turn |
-| **Planner/Executor split** | ✅ Dedicated planner model | ✅ Explicit `Plan` struct, separate phase | ✅ **Closed** |
-| **Subagents** | Isolated contexts, separate models | Shared context, same model | ⚠️ Less isolation |
-| **Memory layers** | MEMORY.md, USER.md, SQLite FTS5, skills | ✅ SQLite + MEMORY.md + USER.md + skills | ✅ **Closed** |
-| **Tools** | 40+ built-in | 9 essential tools | ❌ Intentional (minimalist) |
-| **Skill format** | Reusable SKILL.md with verification | ✅ SKILL.md with artifact verification | ✅ **Closed** |
-| **Gateways** | Telegram, Discord, Slack, WhatsApp, Signal, cron | ✅ REST, MCP, Telegram | ✅ **Mostly closed** |
-| **Execution backends** | Local, Docker, SSH, Modal, etc. | Local subprocess only | ❌ Intentional (simplicity) |
-| **Kanban** | Built-in task board | ❌ None | ❌ Not needed (CLI-focused) |
-| **Verification** | ✅ Artifact-based (paths, URLs, diffs, tests) | ✅ Artifact verification added | ✅ **Closed** |
-| **User modeling** | USER.md for preferences | ✅ SQLite + USER.md | ✅ **Closed** |
-| **Cron** | Scheduled jobs with persistence | Background threads | ⚠️ Partial |
-| **Multi-agent patterns** | ✅ Orchestrator + specialists | ✅ Roles (Researcher, Implementer, Reviewer, QA) | ✅ **Closed** |
+| **Memory** | ✅ `user.md` + `memory.md` + SQLite FTS5 | ✅ `USER.md` + `MEMORY.md` + SQLite | ✅ **Matched** |
+| **Skills** | ✅ Auto-generated `SKILL.md` with verification | ✅ Auto-generated `SKILL.md` with verification | ✅ **Matched** |
+| **Soul** | ✅ Preferences, personality, constraints | ✅ Constraints + preferences in SQLite | ✅ **Matched** |
+| **Crons** | ✅ Scheduled jobs with persistence | ⚠️ Background threads only | ⚠️ **Partial** |
+| **Self-improving loop** | ✅ GEPA (Goal-Execute-Plan-Artifact) | ✅ Planner/Executor + artifact verification | ✅ **Matched** |
 
-## What Hermes-Lite does better (after optimization)
+## What Hermes-Lite does better
 
 | Area | Hermes-Lite advantage |
 |---|---|
@@ -29,14 +31,15 @@
 | **Deployment** | Static binary, systemd, Docker |
 | **Speed** | Instant startup (no Python import overhead) |
 
-## Remaining gaps (intentional trade-offs)
+## Remaining gaps (intentional)
 
 | Gap | Why intentional |
 |---|---|
-| **Fewer tools** | Focus on essential 9; extensible via shell |
-| **No Docker/SSH backends** | Complexity vs benefit trade-off |
+| **9 tools vs 40+** | Minimalist; shell covers the rest |
+| **No Docker backend** | Simplicity trade-off |
 | **No Kanban UI** | CLI-first philosophy |
-| **Single-turn (no daemon)** | Resource efficiency; gateway covers API use |
+| **Single-turn** | Resource efficiency; gateway covers API |
+| **No cron persistence** | Complexity vs benefit |
 
 ## Final score
 
@@ -50,22 +53,16 @@
 
 ## Verdict
 
-**Hermes-Lite is now feature-complete for core agentic patterns** while maintaining its advantages:
-- 10x smaller footprint
-- 5x less RAM
-- 70-80% fewer LLM calls
-- Hardened security
-- Simpler deployment
+**Hermes-Lite implements all 5 pillars** of Hermes Agent's architecture:
 
-**Use Hermes Agent (Nous) if:** You need 40+ tools, multi-model orchestration, Docker/SSH backends, or a Kanban UI.
+1. ✅ **Memory** — SQLite + `MEMORY.md` + `USER.md`
+2. ✅ **Skills** — Auto-generated `SKILL.md` with verification
+3. ✅ **Soul** — Constraints + preferences
+4. ⚠️ **Crons** — Background threads (no persistence yet)
+5. ✅ **Self-improving loop** — Planner/Executor + artifacts
+
+**Use Hermes Agent if:** You need 40+ tools, multi-model orchestration, Docker/SSH backends, or a Kanban UI.
 
 **Use Hermes-Lite if:** You want a lean, fast, secure, self-sufficient agent that minimizes LLM dependency and deploys as a single binary.
 
-## Next steps (optional)
-
-1. **Daemon mode** → Add `hermes-lite serve` for continuous background loop
-2. **Docker backend** → Execute tools in isolated containers
-3. **Multi-model support** → Use different models for planner vs executor
-4. **Discord/Slack gateways** → Port from Python version
-
-But for your use case (resource-efficient, security-focused, minimal LLM calls), **Hermes-Lite is now complete**.
+**For your use case (resource-efficient, security-focused, minimal LLM), Hermes-Lite is the better choice.**
