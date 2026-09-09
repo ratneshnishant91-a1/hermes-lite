@@ -28,11 +28,19 @@ enum Commands {
     Agents { #[command(subcommand)] action: AgentCommands },
     Goals,
     Constraint { key: String, value: String },
-    /// Manage cron jobs
-    Cron {
-        #[command(subcommand)]
-        action: CronCommands,
+    Cron { #[command(subcommand)] action: CronCommands },
+    /// Connect to MCP servers (Drive, Dropbox, GitHub, etc.)
+    McpConnect {
+        /// Server name (e.g., "drive", "dropbox", "github")
+        name: String,
+        /// Command to run (e.g., "npx", "docker", "hermes-mcp")
+        command: String,
+        /// Arguments (space-separated)
+        #[arg(last = true)]
+        args: Vec<String>,
     },
+    /// List connected MCP tools
+    McpList,
     Gateway { #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")] bind: String },
     Mcp,
 }
@@ -46,11 +54,8 @@ enum AgentCommands {
 
 #[derive(Subcommand)]
 enum CronCommands {
-    /// Add a cron job: cron add "backup" "every 1h" "shell" "rm -rf /tmp/*"
     Add { name: String, schedule: String, tool: String, args: String },
-    /// List all cron jobs
     List,
-    /// Remove a cron job
     Remove { job_id: String },
 }
 
@@ -119,7 +124,7 @@ fn main() -> Result<()> {
             match action {
                 CronCommands::Add { name, schedule, tool, args } => {
                     let args_json = serde_json::json!({"command": args});
-                    let job = store.create_cron_job(&uuid::Uuid::new_v4().to_string(), &name, &schedule, &tool, &args_json.to_string())?;
+                    let _ = store.create_cron_job(&uuid::Uuid::new_v4().to_string(), &name, &schedule, &tool, &args_json.to_string())?;
                     println!("Cron job added: {name} ({schedule})");
                 }
                 CronCommands::List => {
@@ -134,6 +139,18 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
+        Commands::McpConnect { name, command, args } => {
+            let args_vec: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            match hermes_lite::mcp_client::MCPClient::connect(&name, &command, &args_vec) {
+                Ok(_) => println!("Connected to MCP server: {name}"),
+                Err(e) => eprintln!("Failed to connect: {e:#}"),
+            }
+            Ok(())
+        }
+        Commands::McpList => {
+            println!("MCP tools would be listed here (integration in progress)");
+            Ok(())
+        }
         Commands::Gateway { bind } => { let mut agent = Agent::new(config.clone())?; gateway(&mut agent, &bind) }
         Commands::Mcp => { let agent = Agent::new(config.clone())?; hermes_lite::mcp::serve(agent.tools()) }
     }
@@ -141,7 +158,7 @@ fn main() -> Result<()> {
 
 fn repl(agent: &mut Agent) -> Result<()> {
     println!("Hermes-Lite v2.0 — Agentic mode");
-    println!("session={}  cmds: exit | stats | goals | cron | constraint\n", agent.session_id());
+    println!("session={}  cmds: exit | stats | goals | cron | mcp-connect\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: "); io::stdout().flush()?;
@@ -172,7 +189,7 @@ fn gateway(agent: &mut Agent, bind: &str) -> Result<()> {
                 let msg = req.split("\r\n\r\n").nth(1).and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok()).and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_owned)).unwrap_or_default();
                 match agent.run(&msg) { Ok(a) => ("200 OK", format!(r#"{{"response":"{}"}}"#, a)), Err(e) => ("500 Internal Server Error", format!(r#"{{"error":"{}"}}"#, e)) }
             } else { ("404 Not Found", r#"{"error":"not found"}"#.into()) };
-        let resp = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}", body.len());
+        let resp = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
     }
     Ok(())

@@ -116,7 +116,7 @@ impl ToolRegistry {
                         .to_lowercase()
                 );
                 let body = format!(
-                    "---\nname: {name}\ndescription: Auto-generated from {task}\n---\n\n# {name}\n\n{result}\n"
+                    "---\nname: {name}\ndescription: Auto-generated from {task}\n---\n\n# {name}\n\n## Task\n{task}\n\n## Solution\n{result}\n"
                 );
                 self.skills.write_skill(&name, &body)?;
                 Ok(json!({"skill": name, "task": task}))
