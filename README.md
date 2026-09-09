@@ -1,48 +1,83 @@
-# Hermes-Lite v1.0 — Production-Ready AI Agent
+# Hermes-Lite v1.5 — AI Agent with Web Dashboard
 
-Complete, secure, production-ready autonomous AI agent.
+Production-ready autonomous AI agent with **Web UI Dashboard**, sessions, memory, skills, web browsing, multi-provider fallback, streaming, MCP, gateway API, and robust sandboxing.
 
-## Features
+## ✨ What's New in v1.5
 
-- ✅ Sessions & Memory (SQLite persistence)
-- ✅ Web browsing & search
-- ✅ Multi-provider fallback (OpenRouter, OpenAI, Anthropic, Gemini, local)
-- ✅ Gateway API (REST, Telegram, Discord)
-- ✅ MCP server support
-- ✅ Streaming responses (SSE)
-- ✅ Docker sandboxing
-- ✅ 5-layer authorization
-- ✅ Observability & metrics
-- ✅ Evaluation suite
+- 🎨 **Web Dashboard** — Real-time metrics, logs, session management
+- 📊 **Visual Analytics** — Charts for request history, latency, success rate
+- 🔐 **API Management** — Token-based auth, user management
+- 🖥️ **Task Monitoring** — Background tasks, cron jobs, delegations
 
 ## Quick Start
 
 ```bash
+# Clone
 git clone https://github.com/ratneshnishant91-a1/hermes-lite.git
 cd hermes-lite
-pip install PyYAML docker
+
+# Install
+pip install -r requirements.txt
+
+# Set API key
 export OPENROUTER_API_KEY="sk-or-..."
-python main.py
+
+# Run CLI
+python -c "from store import Store; print('Core modules loaded')"
+
+# Run Dashboard
+python dashboard.py
+
+# Open http://127.0.0.1:8080
 ```
+
+## Dashboard Features
+
+- **Real-time metrics** — Requests, success rate, latency
+- **Activity logs** — Recent queries with provider/model info
+- **Session viewer** — Active sessions, message history
+- **Task monitor** — Background tasks, cron jobs, delegations
+- **API manager** — Create/revoke tokens, manage users
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Web Dashboard |
+| `/api/metrics` | GET | Observability metrics |
+| `/api/logs` | GET | Recent request logs |
+| `/api/chat` | POST | Chat with agent |
+| `/api/sessions` | GET | List sessions |
+| `/api/tasks` | GET | List background tasks |
 
 ## Security
 
-- Docker isolation (default)
-- Credential filtering
-- Dangerous command approval (regex patterns)
-- 5-layer user authorization (deny-by-default)
-- API authentication required
-- Network disabled in sandbox
+- ✅ Docker sandboxing (default)
+- ✅ 5-layer user authorization
+- ✅ Dangerous command approval (regex patterns)
+- ✅ Credential filtering
+- ✅ API authentication (Bearer tokens)
+- ✅ Network isolation
 
-See SECURITY.md for details.
+## Configuration
 
-## API
+Edit `config.yaml`:
 
-```bash
-curl http://127.0.0.1:8000/token -H "Content-Type: application/json" -d '{"user_id":"default"}'
-curl http://127.0.0.1:8000/chat -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d '{"message":"Hello"}'
+```yaml
+gateway:
+  host: "127.0.0.1"
+  port: 8000
+  require_auth: true
+
+sandbox:
+  mode: "docker"
+  network_enabled: false
 ```
 
 ## License
 
 MIT
+
+## Acknowledgments
+
+Architecture inspired by [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
