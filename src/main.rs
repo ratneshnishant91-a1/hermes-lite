@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "hermes-lite", version, about = "Self-learning autonomous agent (Rust core)")]
+#[command(name = "hermes-lite", version, about = "Self-learning autonomous agent (Rust 2024 core)")]
 struct Cli {
     #[arg(long, default_value = "config.yaml")]
     config: String,
@@ -15,17 +15,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Interactive REPL
     Chat,
-    /// Run one prompt and exit
     Run { prompt: String },
-    /// Print learning stats
     Stats,
-    /// Serve a tiny HTTP health/chat gateway
     Gateway {
         #[arg(long, default_value = "127.0.0.1:8000")]
         bind: String,
     },
+    /// JSON-RPC tools over stdin/stdout (MCP-shaped)
+    Mcp,
 }
 
 fn main() -> Result<()> {
@@ -48,12 +46,13 @@ fn main() -> Result<()> {
             Ok(())
         }
         Commands::Gateway { bind } => gateway(&mut agent, &bind),
+        Commands::Mcp => hermes_lite::mcp::serve(agent.tools()),
     }
 }
 
 fn repl(agent: &mut Agent) -> Result<()> {
-    println!("Hermes-Lite v2.0 (Rust)");
-    println!("session={}  type exit to quit\n", agent.session_id());
+    println!("Hermes-Lite v2.0 (Rust 2024 / rustc 1.98)");
+    println!("session={}  commands: exit | stats\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: ");
@@ -83,8 +82,7 @@ fn repl(agent: &mut Agent) -> Result<()> {
 
 fn gateway(agent: &mut Agent, bind: &str) -> Result<()> {
     let listener = std::net::TcpListener::bind(bind).with_context(|| format!("bind {bind}"))?;
-    println!("gateway listening on http://{bind}");
-    println!("GET /health  POST /chat {{\"message\":\"...\"}}");
+    println!("gateway on http://{bind}  GET /health  POST /chat");
     for stream in listener.incoming() {
         let mut stream = match stream {
             Ok(s) => s,
@@ -106,7 +104,7 @@ fn gateway(agent: &mut Agent, bind: &str) -> Result<()> {
                 .split("\r\n\r\n")
                 .nth(1)
                 .and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok())
-                .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(|s| s.to_string()))
+                .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_owned))
                 .unwrap_or_default();
             match agent.run(&msg) {
                 Ok(answer) => (
