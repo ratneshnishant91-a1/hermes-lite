@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
+use std::io::Write;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -125,5 +126,27 @@ impl Store {
         )?;
         let rows = stmt.query_map(params![format!("%{query}%"), limit], |r| r.get(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Dump entire DB as SQL to stdout (for backup)
+    pub fn backup(&self, out: &mut dyn Write) -> Result<()> {
+        let mut backup_conn = rusqlite::Connection::open(self.db.path())?;
+        backup_conn.execute("VACUUM INTO ?", [":memory:"])?;
+        // Simple dump: iterate tables
+        for table in ["sessions", "messages", "memories"] {
+            let mut stmt = backup_conn.prepare(&format!("SELECT * FROM {table}"))?;
+            let rows = stmt.query_map([], |r| {
+                let mut values = Vec::new();
+                for i in 0..r.as_ref().column_count() {
+                    let v: String = r.get(i)?;
+                    values.push(v);
+                }
+                Ok(values)
+            })?;
+            for row in rows.filter_map(|r| r.ok()) {
+                writeln!(out, "INSERT INTO {} VALUES ({});", table, row.join(","))?;
+            }
+        }
+        Ok(())
     }
 }

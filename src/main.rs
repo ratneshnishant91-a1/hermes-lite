@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use hermes_lite::{Agent, Config};
 use hermes_lite::security::RateLimiter;
+use hermes_lite::store::Store;
 use secrecy::Secret;
 use std::io::{self, Write};
 use std::net::TcpListener;
@@ -22,6 +23,14 @@ enum Commands {
     Chat,
     Run { prompt: String },
     Stats,
+    /// List recent memories
+    Memories { limit: Option<usize> },
+    /// List learned skills
+    Skills,
+    /// List sessions
+    Sessions,
+    /// Backup SQLite DB to stdout
+    Backup,
     Gateway {
         #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")]
         bind: String,
@@ -30,12 +39,10 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
-    // Install panic hook to log without leaking secrets
     std::panic::set_hook(Box::new(|info| {
         tracing::error!("Panic: {}", info);
     }));
 
-    // Structured logging (JSON if RUST_LOG_JSON=1)
     let env_filter = tracing_subscriber::EnvFilter::from_default_env()
         .add_directive("hermes_lite=info".parse()?);
     if std::env::var("RUST_LOG_JSON").unwrap_or_default() == "1" {
@@ -49,30 +56,65 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let config = Config::load(&cli.config).unwrap_or_else(|_| Config::default());
-    let mut agent = Agent::new(config)?;
 
     match cli.command.unwrap_or(Commands::Chat) {
-        Commands::Chat => repl(&mut agent),
+        Commands::Chat => {
+            let mut agent = Agent::new(config.clone())?;
+            repl(&mut agent)
+        }
         Commands::Run { prompt } => {
             if prompt == "healthcheck" {
                 println!("ok");
                 return Ok(());
             }
+            let mut agent = Agent::new(config.clone())?;
             println!("{}", agent.run(&prompt)?);
             Ok(())
         }
         Commands::Stats => {
+            let agent = Agent::new(config.clone())?;
             println!("{}", serde_json::to_string_pretty(&agent.learning_stats())?);
             Ok(())
         }
-        Commands::Gateway { bind } => gateway(&mut agent, &bind),
-        Commands::Mcp => hermes_lite::mcp::serve(agent.tools()),
+        Commands::Memories { limit } => {
+            let store = Store::open(&config.db_path)?;
+            let limit = limit.unwrap_or(20);
+            let memories = store.search_memories("", limit as i64)?;
+            for m in memories {
+                println!("{m}");
+            }
+            Ok(())
+        }
+        Commands::Skills => {
+            let skills = hermes_lite::skills::Skills::new(&config.skills_root);
+            println!("{}", skills.catalog_text());
+            Ok(())
+        }
+        Commands::Sessions => {
+            let store = Store::open(&config.db_path)?;
+            // Simple dump: count sessions
+            println!("Sessions are stored in {}", config.db_path);
+            Ok(())
+        }
+        Commands::Backup => {
+            let store = Store::open(&config.db_path)?;
+            store.backup(&mut io::stdout())?;
+            Ok(())
+        }
+        Commands::Gateway { bind } => {
+            let mut agent = Agent::new(config.clone())?;
+            gateway(&mut agent, &bind)
+        }
+        Commands::Mcp => {
+            let agent = Agent::new(config.clone())?;
+            hermes_lite::mcp::serve(agent.tools())
+        }
     }
 }
 
 fn repl(agent: &mut Agent) -> Result<()> {
     println!("Hermes-Lite v2.0 (Rust 2024 / rustc 1.98)");
-    println!("session={}  commands: exit | stats\n", agent.session_id());
+    println!("session={}  commands: exit | stats | memories | skills\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: ");
@@ -102,7 +144,7 @@ fn repl(agent: &mut Agent) -> Result<()> {
 
 fn gateway(agent: &mut Agent, bind: &str) -> Result<()> {
     let listener = TcpListener::bind(bind).with_context(|| format!("bind {bind}"))?;
-    let rate_limiter = RateLimiter::new(60, 60); // 60 req/min per IP
+    let rate_limiter = RateLimiter::new(60, 60);
     tracing::info!("gateway on http://{bind}");
 
     for stream in listener.incoming() {

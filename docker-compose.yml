@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  hermes:
+    build: .
+    container_name: hermes-lite
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HERMES_BIND=0.0.0.0:8000
+      - RUST_LOG=info
+    ports:
+      - "8000:8000"
+    volumes:
+      - hermes-data:/app/workspace
+      - hermes-db:/app/data
+    read_only: true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "./hermes-lite", "run", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  hermes-data:
+  hermes-db:
