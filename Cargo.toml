@@ -1,9 +1,9 @@
 [package]
 name = "hermes-lite"
 version = "2.0.0"
-edition = "2021"
-authors = ["ratneshnishant91-a1"]
-description = "Hermes-Lite v2.0 — self-learning autonomous agent core in Rust"
+edition = "2024"
+rust-version = "1.85"
+description = "Hermes-Lite v2.0 — self-learning agent core in Rust"
 license = "MIT"
 repository = "https://github.com/ratneshnishant91-a1/hermes-lite"
 
@@ -16,13 +16,16 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
-thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ureq = { version = "2.12", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = true
