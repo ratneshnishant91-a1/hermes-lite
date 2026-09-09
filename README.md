@@ -1,12 +1,25 @@
-# Hermes-Lite v2.0 — Rust 2024 core (Hardened + Optimized)
+# Hermes-Lite v2.0 — Complete Rust Agent Platform
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-Pinned to **rustc 1.98.1**. Edition **2024**. **Security-hardened**. **Resource-optimized**.
+**Rustc 1.98.1** • **Edition 2024** • **Hardened** • **Lightweight** • **Complete**
+
+## Features
+
+| Category | Features |
+|---|---|
+| **Core** | Self-learning, SQLite memory, skill creation, context compression |
+| **Tools** | Shell, files, fetch, search, memory, skills |
+| **Sub-Agents** | Parallel task delegation, background execution |
+| **MCP** | JSON-RPC 2.0 server (Cursor, Claude Code compatible) |
+| **Gateway** | REST API, rate-limited, token auth |
+| **Security** | SSRF protection, path jail, ulimits, secrets management |
+| **Resources** | 2MB binary, 256MB RAM limit, 10s CPU limit per command |
+| **Deploy** | Docker, Docker Compose, systemd, bare metal |
 
 ## Quick Start
 
-### 1. Rust (Native)
+### Rust CLI
 
 ```bash
 cargo build --release
@@ -14,31 +27,32 @@ export OPENAI_API_KEY=sk-...
 ./target/release/hermes-lite chat
 ```
 
-### 2. Python Wrapper
+### Sub-Agents
 
-```python
-from hermes_lite import Agent
-agent = Agent()
-print(agent.run("Remember I prefer Rust"))
+```bash
+# Spawn parallel task
+./target/release/hermes-lite agents spawn "Research Python best practices"
+
+# List tasks
+./target/release/hermes-lite agents list
+
+# Get result
+./target/release/hermes-lite agents get <task_id>
 ```
 
-### 3. Docker Compose (Production)
+### MCP Server
+
+```bash
+./target/release/hermes-lite mcp
+# Use with Cursor, Claude Code, etc.
+```
+
+### Docker
 
 ```bash
 cp .env.example .env
 docker compose up -d
 ```
-
-## Resource Limits (Lightweight)
-
-| Resource | Limit | Purpose |
-|---|---|---|
-| **CPU** | 10s per shell command | Prevents infinite loops |
-| **Memory** | 256MB virtual memory (shell) | Prevents OOM |
-| **Files** | 64 open files (shell) | Prevents FD exhaustion |
-| **HTTP Response** | 100KB max | Prevents memory bloat |
-| **SQLite** | WAL mode, 16MB cache | Fast, low-memory |
-| **Binary** | ~2MB (stripped, LTO) | Minimal disk footprint |
 
 ## Introspection
 
@@ -46,44 +60,36 @@ docker compose up -d
 ./target/release/hermes-lite memories 20
 ./target/release/hermes-lite skills
 ./target/release/hermes-lite backup > backup.sql
+./target/release/hermes-lite stats
 ```
 
-## Hardening Features
+## Resource Limits
 
-| Layer | Measure |
+| Resource | Limit |
 |---|---|
-| **Secrets** | `secrecy::Secret` (never logged) |
-| **Input** | Path traversal, control chars, length limits |
-| **Gateway** | Rate-limited (60 req/min/IP) |
-| **Logging** | Structured JSON (`RUST_LOG_JSON=1`) |
-| **Container** | Distroless, non-root, read-only, `cap_drop=ALL` |
-| **Systemd** | CPU quota, memory limits, sandboxed |
+| Binary | ~2MB (LTO, stripped) |
+| Shell CPU | 10s per command |
+| Shell Memory | 256MB virtual |
+| Shell Files | 64 FDs |
+| HTTP Body | 100KB max |
+| SQLite | WAL, 16MB cache |
 
-## Build / test
+## Security
+
+- Secrets: `secrecy::Secret` (never logged)
+- Input: Path traversal, control chars blocked
+- Gateway: 60 req/min/IP rate limit
+- Container: Distroless, non-root, read-only, `cap_drop=ALL`
+- Systemd: CPU 50%, Memory 512M max
+
+## Build
 
 ```bash
-rustup show
-make ci
+rustup show  # 1.98.1
+make ci      # fmt, lint, audit, test, build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo audit
-```
-
-## Production Deployment
-
-### Docker
-
-```bash
-docker compose up -d
-```
-
-### Systemd (Bare Metal)
-
-```bash
-sudo cp hermes-lite.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable hermes-lite
-sudo systemctl start hermes-lite
 ```
 
 ## License

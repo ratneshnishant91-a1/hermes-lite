@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use hermes_lite::{Agent, Config};
+use hermes_lite::{Agent, Config, SubAgentPool};
 use hermes_lite::security::RateLimiter;
 use hermes_lite::store::Store;
 use secrecy::Secret;
@@ -23,19 +23,30 @@ enum Commands {
     Chat,
     Run { prompt: String },
     Stats,
-    /// List recent memories
     Memories { limit: Option<usize> },
-    /// List learned skills
     Skills,
-    /// List sessions
     Sessions,
-    /// Backup SQLite DB to stdout
     Backup,
+    /// Manage sub-agents
+    Agents {
+        #[command(subcommand)]
+        action: AgentCommands,
+    },
     Gateway {
         #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")]
         bind: String,
     },
     Mcp,
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    /// Spawn a sub-agent
+    Spawn { task: String },
+    /// List all sub-agent tasks
+    List,
+    /// Get result of a task
+    Get { task_id: String },
 }
 
 fn main() -> Result<()> {
@@ -92,13 +103,34 @@ fn main() -> Result<()> {
         }
         Commands::Sessions => {
             let store = Store::open(&config.db_path)?;
-            // Simple dump: count sessions
-            println!("Sessions are stored in {}", config.db_path);
+            println!("Sessions stored in {}", config.db_path);
             Ok(())
         }
         Commands::Backup => {
             let store = Store::open(&config.db_path)?;
             store.backup(&mut io::stdout())?;
+            Ok(())
+        }
+        Commands::Agents { action } => {
+            let pool = SubAgentPool::new(config.clone());
+            match action {
+                AgentCommands::Spawn { task } => {
+                    let task_id = pool.spawn(task);
+                    println!("Spawned sub-agent: {task_id}");
+                }
+                AgentCommands::List => {
+                    let tasks = pool.status();
+                    for task in tasks {
+                        println!("{}: {} - {}", task.id, task.status, task.description);
+                    }
+                }
+                AgentCommands::Get { task_id } => {
+                    match pool.get_result(&task_id) {
+                        Some(task) => println!("{:?}", task),
+                        None => println!("Task not found: {task_id}"),
+                    }
+                }
+            }
             Ok(())
         }
         Commands::Gateway { bind } => {
@@ -114,7 +146,7 @@ fn main() -> Result<()> {
 
 fn repl(agent: &mut Agent) -> Result<()> {
     println!("Hermes-Lite v2.0 (Rust 2024 / rustc 1.98)");
-    println!("session={}  commands: exit | stats | memories | skills\n", agent.session_id());
+    println!("session={}  commands: exit | stats | memories | skills | agents\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: ");
