@@ -5,22 +5,28 @@ pub mod agents;
 pub mod approval;
 pub mod config;
 pub mod context;
+pub mod executor;
 pub mod jobs;
 pub mod learner;
 pub mod math;
 pub mod mcp;
+pub mod memory_files;
 pub mod model;
 pub mod network;
+pub mod planner;
+pub mod roles;
 pub mod sandbox;
 pub mod security;
 pub mod skills;
 pub mod store;
+pub mod telegram;
 pub mod tools;
 pub mod workspace;
 
 pub use agent::Agent;
 pub use agents::SubAgentPool;
 pub use config::Config;
+pub use roles::{AgentRole, Worker};
 
 #[cfg(test)]
 mod tests {

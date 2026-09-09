@@ -1,9 +1,13 @@
 use crate::approval::approve;
 use crate::config::Config;
 use crate::context::Context;
+use crate::executor::Executor;
 use crate::learner::SelfLearner;
 use crate::math;
+use crate::memory_files::MemoryFiles;
 use crate::model::Model;
+use crate::planner::Planner;
+use crate::roles::AgentRole;
 use crate::skills::Skills;
 use crate::store::Store;
 use crate::tools::ToolRegistry;
@@ -14,28 +18,11 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 const SYSTEM: &str = r#"You are Hermes-Lite v2.0, a self-learning autonomous agent.
-- Maintain a goal stack; decompose tasks into steps.
-- Use tools reliably; retry transient failures.
-- Save durable facts and skills; reuse skills for similar tasks.
-- Reflect on errors; revise plans when stuck.
-- Observe user constraints and preferences.
-- Be concise. Prefer cached/skill responses over LLM calls."#;
-
-#[derive(Debug, Clone)]
-pub struct Goal {
-    pub id: String,
-    pub description: String,
-    pub status: String,
-    pub plan: Vec<String>,
-    pub current_step: usize,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Constraints {
-    pub prefer_rust: bool,
-    pub avoid_network: bool,
-    pub max_tool_calls_per_turn: usize,
-}
+- Use planner/executor pattern for complex tasks.
+- Verify artifacts before accepting results.
+- Obey role restrictions.
+- Save durable facts and skills.
+- Be concise."#;
 
 pub struct Agent {
     store: Store,
@@ -48,7 +35,10 @@ pub struct Agent {
     current_task: Option<String>,
     cache: HashMap<String, String>,
     llm_call_count: u64,
-    constraints: Constraints,
+    constraints: super::agent::Constraints,
+    role: AgentRole,
+    planner: Option<Planner>,
+    memory_files: MemoryFiles,
 }
 
 impl Agent {
@@ -60,26 +50,25 @@ impl Agent {
             Some(id) if id > 0 => id,
             _ => store.create_session()?,
         };
+
+        // Generate memory files
+        let memory_files = MemoryFiles::new(&cfg.workspace_root);
+        let _ = memory_files.generate(&store);
+
         let mut prompt = format!("{SYSTEM}\n\n{}", skills.catalog_text());
-        if let Ok(facts) = store.search_memories("", 8) {
-            if !facts.is_empty() {
-                prompt.push_str("\n\nKnown memories:\n");
-                for f in facts {
-                    prompt.push_str(&format!("- {f}\n"));
-                }
-            }
-        }
+        prompt.push_str(&memory_files.load_into_prompt());
+
         let context = Context::load(&store, session_id, &prompt)?;
         let tools = ToolRegistry::new(cfg.clone(), workspace, Store::open(&cfg.db_path)?, skills.clone());
         let learner = SelfLearner::load(&cfg.workspace_root)?;
         let model = Model::new(&cfg.model.default_model);
-        let mut constraints = Constraints::default();
+        let planner = Planner::new(model.clone());
+
+        let mut constraints = super::agent::Constraints::default();
         if let Some(v) = store.get_constraint("avoid_network")? {
             constraints.avoid_network = v == "true";
         }
-        if let Some(v) = store.get_constraint("prefer_rust")? {
-            constraints.prefer_rust = v == "true";
-        }
+
         Ok(Self {
             store,
             skills,
@@ -92,6 +81,9 @@ impl Agent {
             cache: HashMap::new(),
             llm_call_count: 0,
             constraints,
+            role: AgentRole::Implementer, // Default role
+            planner: Some(planner),
+            memory_files,
         })
     }
 
@@ -119,35 +111,43 @@ impl Agent {
         self.current_task = Some(user_message.chars().take(200).collect());
         self.task_start = self.context.messages.len();
 
-        // 1. Pattern match
+        // Pattern match
         if let Some(response) = self.pattern_match(user_message) {
             return Ok(response);
         }
 
-        // 2. Math
+        // Math
         if let Some(math_result) = math::evaluate_query(user_message) {
             return Ok(math_result);
         }
 
-        // 3. Cache
+        // Cache
         let cache_key = format!("{:x}", md5::compute(user_message.as_bytes()));
         if let Some(cached) = self.cache.get(&cache_key) {
             return Ok(format!("[cached] {}", cached));
         }
 
-        // 4. Skill retrieval
-        if let Some(skill_response) = self.try_apply_skill(user_message)? {
-            self.cache.insert(cache_key, skill_response.clone());
-            return Ok(skill_response);
+        // For complex tasks, use planner/executor
+        if user_message.len() > 50 && !self.cache.contains_key(&cache_key) {
+            if let Some(ref planner) = self.planner {
+                if let Ok(plan) = planner.create_plan(user_message, &self.context.prompt_messages(10)) {
+                    // Execute plan
+                    let executor = Executor::new(self.tools.clone());
+                    let mut plan_mut = plan;
+                    let outputs = executor.execute_plan(&mut plan_mut)?;
+
+                    // Verify artifacts
+                    let verified = plan_mut.artifacts.iter().all(|a| a.verified);
+                    if verified {
+                        let result = outputs.join("\n");
+                        self.cache.insert(cache_key, result.clone());
+                        return Ok(result);
+                    }
+                }
+            }
         }
 
-        // 5. Direct tool execution
-        if let Some(skill_response) = self.try_skill_execution(user_message)? {
-            self.cache.insert(cache_key, skill_response.clone());
-            return Ok(skill_response);
-        }
-
-        // 6. LLM with reflection & constraints
+        // Fall back to direct execution
         self.llm_call_count += 1;
         self.context.add(&self.store, json!({"role":"user","content":user_message}))?;
 
@@ -163,8 +163,9 @@ impl Agent {
                 augmented.push(json!({"role":"system","content":format!("Last error: {}. Reflect and revise.", err)}));
             }
             if self.constraints.avoid_network {
-                augmented.push(json!({"role":"system","content":"Constraint: avoid network tools (fetch_url, web_search)."}));
+                augmented.push(json!({"role":"system","content":"Constraint: avoid network tools."}));
             }
+            augmented.push(json!({"role":"system","content":format!("Your role: {:?}. Allowed tools: {:?}", self.role, self.role.allowed_tools())}));
 
             let response = self.model.generate(&augmented, &self.tools.schemas())?;
 
@@ -177,13 +178,20 @@ impl Agent {
 
             for call in response.tool_calls {
                 let name = call["function"]["name"].as_str().unwrap_or("").to_string();
+
+                // Enforce role restrictions
+                if !self.role.allows(&name) {
+                    last_error = Some(format!("Tool {} not allowed for role {:?}", name, self.role));
+                    continue;
+                }
+
                 let args: Value = match call["function"]["arguments"].as_str() {
                     Some(s) => serde_json::from_str(s).unwrap_or(json!({})),
                     None => call["function"]["arguments"].clone(),
                 };
 
                 if self.constraints.avoid_network && ["fetch_url","web_search"].contains(&name.as_str()) {
-                    last_error = Some("Network tools disabled by constraints.".into());
+                    last_error = Some("Network tools disabled.".into());
                     continue;
                 }
 
@@ -216,35 +224,16 @@ impl Agent {
 
     fn pattern_match(&self, query: &str) -> Option<String> {
         let q = query.to_lowercase();
-        if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) { return Some("Hello! How can I help you today?".into()); }
+        if Regex::new(r"^(hi|hello|hey|greetings)").unwrap().is_match(&q) { return Some("Hello!".into()); }
         if Regex::new(r"(thank|thanks)").unwrap().is_match(&q) { return Some("You're welcome!".into()); }
-        if Regex::new(r"^(help|what can you do)").unwrap().is_match(&q) { return Some("I can: execute shell commands, read/write files, fetch URLs, search web, save memories, create skills, evaluate math. Just ask!".into()); }
+        if Regex::new(r"^(help|what can you do)").unwrap().is_match(&q) { return Some("I can: shell, files, fetch, search, memory, skills, math.".into()); }
         if Regex::new(r"(status|health|are you ok)").unwrap().is_match(&q) { return Some("All systems operational.".into()); }
         if Regex::new(r"(what time|current time|date now)").unwrap().is_match(&q) { return Some(format!("Current time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))); }
         None
     }
 
-    fn try_apply_skill(&self, query: &str) -> Result<Option<String>> {
-        let relevant = self.skills.find_relevant(query);
-        if let Some(name) = relevant.first() {
-            let content = self.skills.load(name)?;
-            return Ok(Some(format!("[skill: {}]\n{}", name, content)));
-        }
-        Ok(None)
-    }
-
-    fn try_skill_execution(&self, query: &str) -> Result<Option<String>> {
-        let q = query.to_lowercase();
-        if let Some(path) = Regex::new(r"read file (\S+)").unwrap().captures(&q).and_then(|c| c.get(1)) {
-            let result = self.tools.execute("read_file", &json!({"path": path.as_str()}))?;
-            return Ok(Some(format!("File content: {}", result)));
-        }
-        if let Some(mem_query) = Regex::new(r"(remember|memory|recall) (.+)").unwrap().captures(&q).and_then(|c| c.get(2)) {
-            let results = self.store.search_memories(mem_query.as_str(), 5)?;
-            if results.is_empty() { return Ok(Some("No matching memories found.".into())); }
-            return Ok(Some(format!("Memories: {}", results.join(" | "))));
-        }
-        Ok(None)
+    pub fn set_role(&mut self, role: AgentRole) {
+        self.role = role;
     }
 
     pub fn list_goals(&self) -> Result<Vec<crate::store::GoalRecord>> {
