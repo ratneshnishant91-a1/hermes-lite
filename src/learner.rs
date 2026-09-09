@@ -39,6 +39,7 @@ impl SelfLearner {
         Ok(())
     }
 
+    /// Learn from interaction, but only create skills for repeated patterns
     pub fn learn(
         &mut self,
         store: &Store,
@@ -48,11 +49,12 @@ impl SelfLearner {
         result: &str,
         success: bool,
     ) -> Result<()> {
+        // Extract user preferences (always learn these)
         for msg in messages {
             if msg.get("role").and_then(|r| r.as_str()) == Some("user") {
                 if let Some(c) = msg.get("content").and_then(|c| c.as_str()) {
                     let lower = c.to_lowercase();
-                    if ["i prefer", "i like", "always", "never"]
+                    if ["i prefer", "i like", "always", "never", "remember that"]
                         .iter()
                         .any(|k| lower.contains(k))
                     {
@@ -68,7 +70,10 @@ impl SelfLearner {
                 }
             }
         }
-        if success && messages.len() > 8 {
+
+        // Create skills only for complex, repeated tasks (not every interaction)
+        // Threshold: task must be > 20 chars and have > 10 messages (complex interaction)
+        if success && messages.len() > 10 && task.len() > 20 {
             let name = format!(
                 "auto_{}",
                 task.split_whitespace()
@@ -78,18 +83,22 @@ impl SelfLearner {
                     .join("_")
                     .to_lowercase()
             );
-            if !name.ends_with('_') && name.len() > 5 {
-                let body = format!(
-                    "---\nname: {name}\ndescription: Auto-generated from {task}\n---\n\n# {name}\n\n{result}\n"
-                );
-                skills.write_skill(&name, &body)?;
-                self.log.skills_created.push(serde_json::json!({
-                    "timestamp": Utc::now().to_rfc3339(),
-                    "name": name,
-                    "task": task
-                }));
+            if !name.ends_with('_') && name.len() > 8 {
+                // Check if skill already exists (avoid duplicates)
+                if skills.load(&name).is_err() {
+                    let body = format!(
+                        "---\nname: {name}\ndescription: Auto-generated from: {task}\n---\n\n# {name}\n\n## Task\n{task}\n\n## Solution\n{result}\n"
+                    );
+                    skills.write_skill(&name, &body)?;
+                    self.log.skills_created.push(serde_json::json!({
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "name": name,
+                        "task": task
+                    }));
+                }
             }
         }
+
         self.log.lessons_learned.push(serde_json::json!({
             "timestamp": Utc::now().to_rfc3339(),
             "task": task,

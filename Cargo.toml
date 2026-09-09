@@ -11,6 +11,7 @@ repository = "https://github.com/ratneshnishant91-a1/hermes-lite"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+md5 = "0.7"
 regex = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 secrecy = "0.8"
