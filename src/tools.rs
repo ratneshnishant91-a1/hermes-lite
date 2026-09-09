@@ -34,6 +34,7 @@ impl ToolRegistry {
             ("memory_save", "Save a long-term fact."),
             ("memory_search", "Search long-term memory."),
             ("skill_load", "Load a SKILL.md by name."),
+            ("skill_create", "Create a new skill from a task."),
         ]
         .into_iter()
         .map(|(name, description)| {
@@ -51,7 +52,9 @@ impl ToolRegistry {
                             "url": {"type": "string"},
                             "query": {"type": "string"},
                             "name": {"type": "string"},
-                            "limit": {"type": "integer"}
+                            "limit": {"type": "integer"},
+                            "task": {"type": "string"},
+                            "result": {"type": "string"}
                         }
                     }
                 }
@@ -99,6 +102,24 @@ impl ToolRegistry {
             "skill_load" => {
                 let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 Ok(json!(self.skills.load(name)?))
+            }
+            "skill_create" => {
+                let task = args.get("task").and_then(|v| v.as_str()).unwrap_or("");
+                let result = args.get("result").and_then(|v| v.as_str()).unwrap_or("");
+                let name = format!(
+                    "auto_{}",
+                    task.split_whitespace()
+                        .take(3)
+                        .filter(|w| w.chars().all(|c| c.is_ascii_alphanumeric()))
+                        .collect::<Vec<_>>()
+                        .join("_")
+                        .to_lowercase()
+                );
+                let body = format!(
+                    "---\nname: {name}\ndescription: Auto-generated from {task}\n---\n\n# {name}\n\n{result}\n"
+                );
+                self.skills.write_skill(&name, &body)?;
+                Ok(json!({"skill": name, "task": task}))
             }
             other => bail!("Unknown tool: {other}"),
         }

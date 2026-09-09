@@ -1,18 +1,30 @@
-//! Minimal MCP-style JSON-RPC 2.0 over stdin/stdout.
+//! Model Context Protocol (MCP) server over stdio.
+//!
+//! JSON-RPC 2.0 compatible. Supports:
+//! - `initialize`
+//! - `tools/list`
+//! - `tools/call`
 
 use crate::tools::ToolRegistry;
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use tracing;
 
 pub fn serve(tools: &ToolRegistry) -> Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
+    tracing::info!("MCP server started on stdio");
+
     for line in stdin.lock().lines() {
-        let line = line?;
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
         if line.trim().is_empty() {
             continue;
         }
+
         let req: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(err) => {
@@ -24,15 +36,19 @@ pub fn serve(tools: &ToolRegistry) -> Result<()> {
                 continue;
             }
         };
+
         let id = req.get("id").cloned().unwrap_or(json!(null));
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+
         let result = match method {
             "initialize" => json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "hermes-lite", "version": "2.0.0"}
             }),
-            "tools/list" => json!({"tools": tools.schemas()}),
+            "tools/list" => {
+                json!({"tools": tools.schemas()})
+            }
             "tools/call" => {
                 let params = req.get("params").cloned().unwrap_or(json!({}));
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -44,11 +60,13 @@ pub fn serve(tools: &ToolRegistry) -> Result<()> {
             }
             _ => json!({"error": {"code": -32601, "message": format!("unknown method {method}")}}),
         };
+
         let resp = if result.get("error").is_some() {
             json!({"jsonrpc":"2.0","id": id, "error": result.get("error").cloned()})
         } else {
             json!({"jsonrpc":"2.0","id": id, "result": result})
         };
+
         writeln!(stdout, "{resp}")?;
         stdout.flush()?;
     }

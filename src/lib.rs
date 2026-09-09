@@ -17,9 +17,11 @@ pub mod skills;
 pub mod store;
 pub mod tools;
 pub mod workspace;
+pub mod agents;
 
 pub use agent::Agent;
 pub use config::Config;
+pub use agents::SubAgentPool;
 
 #[cfg(test)]
 mod tests {
