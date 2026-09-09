@@ -1,6 +1,4 @@
 //! Sub-agent delegation system.
-//!
-//! Allows spawning isolated sub-agents for parallel task execution.
 
 use crate::config::Config;
 use crate::store::Store;
@@ -50,9 +48,10 @@ impl SubAgentPool {
         let tasks = self.tasks.clone();
         let config = self.config.clone();
         let task_id_clone = task_id.clone();
+        let desc_clone = description.clone();
 
         thread::spawn(move || {
-            let result = execute_sub_task(&config, &description);
+            let result = execute_sub_task(&config, &desc_clone);
             if let Ok(mut guard) = tasks.lock() {
                 if let Some(task) = guard.iter_mut().find(|t| t.id == task_id_clone) {
                     task.status = "completed".into();
@@ -78,10 +77,24 @@ impl SubAgentPool {
             .find(|t| t.id == task_id)
             .cloned()
     }
+
+    /// Merge results from completed sub-agents
+    pub fn merge_results(&self) -> String {
+        let guard = self.tasks.lock().expect("lock");
+        let completed: Vec<_> = guard.iter().filter(|t| t.status == "completed").collect();
+        if completed.is_empty() {
+            return "No completed tasks.".into();
+        }
+        let mut merged = String::from("Sub-agent results:\n");
+        for task in completed {
+            merged.push_str(&format!("- {}: {}\n", task.description, task.result.as_deref().unwrap_or("(no result)")));
+        }
+        merged
+    }
 }
 
 fn execute_sub_task(config: &Config, description: &str) -> Result<String> {
-    // Simplified sub-agent: just runs a single turn with limited tools
+    // Simplified sub-agent: single-turn execution
     let store = Store::open(&config.db_path)?;
     let session_id = store.create_session()?;
     let workspace = Workspace::new(&config.workspace_root)?;

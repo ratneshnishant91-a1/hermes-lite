@@ -39,7 +39,7 @@ impl SelfLearner {
         Ok(())
     }
 
-    /// Learn from interaction, but only create skills for repeated patterns
+    /// Learn from interaction; create skills for repeated patterns
     pub fn learn(
         &mut self,
         store: &Store,
@@ -71,9 +71,8 @@ impl SelfLearner {
             }
         }
 
-        // Create skills only for complex, repeated tasks (not every interaction)
-        // Threshold: task must be > 20 chars and have > 10 messages (complex interaction)
-        if success && messages.len() > 10 && task.len() > 20 {
+        // Create skills for complex, successful tasks
+        if success && messages.len() > 8 && task.len() > 20 {
             let name = format!(
                 "auto_{}",
                 task.split_whitespace()
@@ -83,8 +82,8 @@ impl SelfLearner {
                     .join("_")
                     .to_lowercase()
             );
-            if !name.ends_with('_') && name.len() > 8 {
-                // Check if skill already exists (avoid duplicates)
+            if name.len() > 8 && !name.ends_with('_') {
+                // Avoid duplicates
                 if skills.load(&name).is_err() {
                     let body = format!(
                         "---\nname: {name}\ndescription: Auto-generated from: {task}\n---\n\n# {name}\n\n## Task\n{task}\n\n## Solution\n{result}\n"

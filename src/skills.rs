@@ -15,6 +15,7 @@ impl Skills {
     pub fn catalog_text(&self) -> String {
         let mut lines = vec!["Available skills:".to_string()];
         if let Ok(entries) = fs::read_dir(&self.root) {
+            let mut skills_found = Vec::new();
             for e in entries.flatten() {
                 let skill = e.path().join("SKILL.md");
                 if skill.exists() {
@@ -27,9 +28,10 @@ impl Skills {
                                 .map(|l| l.splitn(2, ':').nth(1).unwrap_or("").trim().to_string())
                         })
                         .unwrap_or_else(|| "No description.".into());
-                    lines.push(format!("- {name}: {desc}"));
+                    skills_found.push(format!("- {name}: {desc}"));
                 }
             }
+            lines.extend(skills_found);
         }
         if lines.len() == 1 {
             lines.push("- none yet (self-learning will create them)".into());
@@ -51,5 +53,25 @@ impl Skills {
         fs::create_dir_all(&dir)?;
         fs::write(dir.join("SKILL.md"), body)?;
         Ok(())
+    }
+
+    /// Find skills relevant to a query (simple keyword match)
+    pub fn find_relevant(&self, query: &str) -> Vec<String> {
+        let q = query.to_lowercase();
+        let mut relevant = Vec::new();
+        if let Ok(entries) = fs::read_dir(&self.root) {
+            for e in entries.flatten() {
+                let skill = e.path().join("SKILL.md");
+                if skill.exists() {
+                    if let Ok(content) = fs::read_to_string(&skill) {
+                        if content.to_lowercase().contains(&q) {
+                            let name = e.file_name().to_string_lossy().into_owned();
+                            relevant.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        relevant
     }
 }
