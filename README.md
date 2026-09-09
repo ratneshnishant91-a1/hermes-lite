@@ -1,8 +1,38 @@
 # Hermes-Lite v2.0 — Rust 2024 core
 
+[![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
+
 Pinned to **rustc 1.98.1** (3 Sep 2026) via `rust-toolchain.toml`. Edition **2024** (stable since 1.85).
 
 Python files in this repo are a prototype archive. The supported kernel is `cargo run`.
+
+## Quick Start
+
+### 1. Rust (Native)
+
+```bash
+cargo build --release
+export OPENAI_API_KEY=sk-...
+./target/release/hermes-lite chat
+```
+
+### 2. Python Wrapper
+
+```python
+from hermes_lite import Agent
+
+agent = Agent()  # Auto-finds binary
+print(agent.run("Remember I prefer Rust"))
+print(agent.stats())
+```
+
+### 3. Docker (Distroless)
+
+```bash
+docker build -t hermes-lite:latest .
+docker run --rm -it -e OPENAI_API_KEY=sk-... -p 8000:8000 hermes-lite:latest
+# Gateway on http://localhost:8000
+```
 
 ## What I verified (Sep 2026)
 
@@ -17,6 +47,7 @@ Python files in this repo are a prototype archive. The supported kernel is `carg
 
 ```bash
 rustup show          # should print 1.98.1 from rust-toolchain.toml
+make ci              # fmt-check, lint, test, build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build --release
