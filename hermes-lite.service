@@ -1,0 +1,39 @@
+[Unit]
+Description=Hermes-Lite Self-Learning Agent
+After=network.target
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/opt/hermes-lite
+ExecStart=/opt/hermes-lite/hermes-lite gateway --bind 0.0.0.0:8000
+Restart=on-failure
+RestartSec=10
+
+# Resource limits (lighter on system)
+LimitNOFILE=256
+LimitNPROC=50
+LimitRSS=262144
+LimitAS=524288
+CPUQuota=50%
+MemoryMax=512M
+MemoryHigh=384M
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=true
+ProtectHome=true
+ReadWritePaths=/opt/hermes-lite/workspace /opt/hermes-lite/data
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Environment
+Environment="OPENAI_API_KEY=sk-..."
+Environment="RUST_LOG=info"
+Environment="HERMES_BIND=0.0.0.0:8000"
+
+[Install]
+WantedBy=multi-user.target

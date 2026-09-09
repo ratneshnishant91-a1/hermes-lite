@@ -1,8 +1,8 @@
-# Hermes-Lite v2.0 — Rust 2024 core (Hardened)
+# Hermes-Lite v2.0 — Rust 2024 core (Hardened + Optimized)
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-Pinned to **rustc 1.98.1** (3 Sep 2026). Edition **2024**. **Security-hardened**. **Introspectable**.
+Pinned to **rustc 1.98.1**. Edition **2024**. **Security-hardened**. **Resource-optimized**.
 
 ## Quick Start
 
@@ -26,36 +26,38 @@ print(agent.run("Remember I prefer Rust"))
 
 ```bash
 cp .env.example .env
-# Edit .env with your API key
 docker compose up -d
 ```
 
-## Introspection (See What It Learned)
+## Resource Limits (Lightweight)
+
+| Resource | Limit | Purpose |
+|---|---|---|
+| **CPU** | 10s per shell command | Prevents infinite loops |
+| **Memory** | 256MB virtual memory (shell) | Prevents OOM |
+| **Files** | 64 open files (shell) | Prevents FD exhaustion |
+| **HTTP Response** | 100KB max | Prevents memory bloat |
+| **SQLite** | WAL mode, 16MB cache | Fast, low-memory |
+| **Binary** | ~2MB (stripped, LTO) | Minimal disk footprint |
+
+## Introspection
 
 ```bash
-# View recent memories
 ./target/release/hermes-lite memories 20
-
-# List learned skills
 ./target/release/hermes-lite skills
-
-# Backup state
 ./target/release/hermes-lite backup > backup.sql
-
-# Stats
-./target/release/hermes-lite stats
 ```
 
 ## Hardening Features
 
 | Layer | Measure |
 |---|---|
-| **Secrets** | API keys wrapped in `secrecy::Secret` |
+| **Secrets** | `secrecy::Secret` (never logged) |
 | **Input** | Path traversal, control chars, length limits |
 | **Gateway** | Rate-limited (60 req/min/IP) |
 | **Logging** | Structured JSON (`RUST_LOG_JSON=1`) |
 | **Container** | Distroless, non-root, read-only, `cap_drop=ALL` |
-| **State** | SQLite backup/restore, volumes |
+| **Systemd** | CPU quota, memory limits, sandboxed |
 
 ## Build / test
 
@@ -69,10 +71,19 @@ cargo audit
 
 ## Production Deployment
 
+### Docker
+
 ```bash
 docker compose up -d
-# Gateway on http://localhost:8000
-# Data persisted in Docker volumes
+```
+
+### Systemd (Bare Metal)
+
+```bash
+sudo cp hermes-lite.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable hermes-lite
+sudo systemctl start hermes-lite
 ```
 
 ## License
