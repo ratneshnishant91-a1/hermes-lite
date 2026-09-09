@@ -1,49 +1,84 @@
-# Hermes-Lite v1.5 — Self-Learning AI Agent
+# Hermes-Lite v1.5 — Hardened Self-Learning AI Agent
 
-🚀 **Production-ready autonomous AI agent with self-learning capability**
-
-The key USP of Hermes Agent: **learns from every task** to become smarter over time.
+🚀 **Production-hardened autonomous AI agent with self-learning capability**
 
 ## ✨ Key Features
 
 ### 🧠 Self-Learning (USP)
-- **Automatic skill creation** from successful tasks
-- **Memory consolidation** - extracts important facts from conversations
-- **Performance feedback** - learns from successes and failures
-- **Skill evolution** - improves skills based on usage patterns
+- Automatic skill creation from tasks
+- Memory consolidation
+- Performance feedback loop
+- Continuous improvement
+
+### 🛡️ Production Hardening
+- **Input validation** - Prevents injection attacks
+- **Docker sandboxing** - OS-level isolation
+- **Credential filtering** - No secrets in sandbox
+- **Rate limiting** - Prevents abuse
+- **Audit logging** - Tamper-evident security logs
+- **Health checks** - Liveness/readiness probes
+- **Resource quotas** - CPU, memory, disk limits
 
 ### 🎨 Web Dashboard
-- Real-time metrics and analytics
-- Learning statistics visualization
-- Session and task management
-- API token management
-
-### 🛡️ Production Security
-- Docker sandboxing (default)
-- 5-layer user authorization
-- Dangerous command approval (regex patterns)
-- Credential filtering
-- Network isolation
+- Real-time metrics
+- Security audit viewer
+- Learning statistics
+- Health monitoring
 
 ## Quick Start
 
 ```bash
-# Clone
 git clone https://github.com/ratneshnishant91-a1/hermes-lite.git
 cd hermes-lite
-
-# Install
 pip install -r requirements.txt
-
-# Set API key
-export OPENROUTER_API_KEY="sk-or-..."
-
-# Run self-learning demo
+export OPENAI_API_KEY="sk-..."
 python demo.py
+```
 
-# Run dashboard
-python dashboard.py
-# Open http://127.0.0.1:8080
+## Security Features
+
+### 1. Input Validation
+```python
+from security import InputValidator
+
+valid, error = InputValidator.validate_user_message(user_input)
+# Prevents: path traversal, SQL injection, XSS, command injection
+```
+
+### 2. Docker Sandboxing
+```yaml
+sandbox:
+  mode: "docker"
+  network_enabled: false
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+```
+
+### 3. Rate Limiting
+```python
+from security import RateLimiter
+
+limiter = RateLimiter(max_requests=100, window_seconds=60)
+allowed, wait = limiter.is_allowed(user_id)
+```
+
+### 4. Audit Logging
+```python
+from security import AuditLogger
+
+audit = AuditLogger()
+audit.log_tool_execution("shell", {"command": "ls"}, "user-123")
+# Tamper-evident hash chain
+```
+
+### 5. Health Checks
+```python
+from health import HealthChecker
+
+health = HealthChecker(config)
+liveness = health.check_liveness()
+readiness = health.check_readiness()
+metrics = health.get_metrics()
 ```
 
 ## Self-Learning Example
@@ -53,89 +88,66 @@ from agent import Agent
 
 agent = Agent()
 
-# Task 1: Create a file
-agent.run("Create a Python file that prints Hello World")
-# → Agent creates skill automatically
+# Task 1
+agent.run("Create a Python file")
+# → Auto-creates skill
 
-# Task 2: Similar task
-agent.run("Create a test file with a function")
-# → Agent uses learned skill from Task 1!
+# Task 2 (similar)
+agent.run("Create another file")
+# → Uses learned skill!
 
-# Check what was learned
+# Check learning
 stats = agent.get_learning_stats()
 print(stats)
 # {'total_events': 2, 'skills_created': 1, ...}
-
-skills = agent.list_learned_skills()
-print(skills)
-# [{'name': 'auto_create_python', 'task': 'Create a Python file...'}]
-```
-
-## How Self-Learning Works
-
-```
-Task Completion
-    ↓
-Extract Workflow (tool calls, results)
-    ↓
-Create Skill (SKILL.md)
-    ↓
-Consolidate Memory (important facts)
-    ↓
-Record Lesson (success/failure)
-    ↓
-Next Similar Task → Use Learned Skill
-```
-
-### Learning Log
-
-Auto-saved to `workspace/learning_log.json`:
-
-```json
-{
-  "total_learning_events": 5,
-  "skills_created": [
-    {"name": "auto_create_python", "task": "Create a Python file..."}
-  ],
-  "memories_consolidated": [
-    {"fact": "User preference: I prefer Python over JavaScript"}
-  ],
-  "lessons_learned": [...]
-}
 ```
 
 ## Dashboard
 
-http://127.0.0.1:8080
-
-- 📊 Real-time metrics
-- 📝 Activity logs
-- 📚 Learned skills
-- 🎯 Task success rate
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Web Dashboard |
-| `/api/metrics` | GET | Observability metrics |
-| `/api/logs` | GET | Recent logs |
-| `/api/learning/stats` | GET | Learning statistics |
-| `/api/learning/skills` | GET | Auto-created skills |
-
-## Configuration
-
-`config.yaml`:
-
-```yaml
-sandbox:
-  mode: "docker"  # Docker isolation
-  network_enabled: false  # No network
-
-approvals:
-  mode: "manual"  # manual, smart, off
-  dangerous_patterns: [...]
+```bash
+python dashboard.py
+# http://127.0.0.1:8080
 ```
+
+- Real-time metrics
+- Security audit logs
+- Learning stats
+- Health status
+
+## Production Deployment
+
+```bash
+# Docker
+docker build -t hermes-lite .
+docker run -d -p 8080:8080 \
+  --memory=512m \
+  --cpus=1.0 \
+  -e OPENAI_API_KEY=sk-... \
+  hermes-lite
+
+# Health check
+curl http://localhost:8080/health
+```
+
+## Security Checklist
+
+- [ ] Docker sandbox enabled
+- [ ] Network disabled in sandbox
+- [ ] Rate limiting configured
+- [ ] API auth enabled
+- [ ] Audit logging active
+- [ ] Health checks monitored
+- [ ] Resource quotas set
+- [ ] Input validation tested
+
+## Files
+
+- `security.py` - Input validation, audit logging, rate limiting
+- `health.py` - Liveness/readiness probes
+- `learner.py` - Self-learning engine
+- `agent.py` - Hardened agent
+- `sandbox.py` - Docker isolation
+- `dashboard.py` - Web UI
 
 ## License
 
@@ -143,4 +155,4 @@ MIT
 
 ## Acknowledgments
 
-Self-learning architecture inspired by [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
+Security patterns from [Hermes Agent](https://github.com/NousResearch/hermes-agent).
