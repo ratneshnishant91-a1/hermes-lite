@@ -1,8 +1,63 @@
-# Hermes-Lite v2.0 — Self-Sufficient Rust Agent
+# Hermes-Lite v2.0 — Production-Ready Rust Agent
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-**Minimizes LLM calls** • **Caches responses** • **Auto-creates skills** • **Learns preferences**
+**Self-sufficient** • **Minimizes LLM calls** • **Caches responses** • **Auto-creates skills** • **End-to-end tested**
+
+## Quick Start (End-to-End)
+
+### 1. Build
+
+```bash
+rustup show  # Must be 1.98.1
+cargo build --release
+```
+
+### 2. Test
+
+```bash
+# Unit tests (no API key needed)
+cargo test --lib
+
+# Integration tests (needs API key)
+export OPENAI_API_KEY=sk-...
+cargo test --test integration -- --ignored
+```
+
+### 3. Run
+
+```bash
+export OPENAI_API_KEY=sk-...
+./target/release/hermes-lite chat
+```
+
+## Verify End-to-End
+
+```bash
+# 1. Check binary builds
+file target/release/hermes-lite
+# → ELF 64-bit LSB executable, statically linked
+
+# 2. Check health
+./target/release/hermes-lite run healthcheck
+# → ok
+
+# 3. Run agent
+./target/release/hermes-lite run "What is 2+2?"
+# → Agent responds
+
+# 4. Check learning
+./target/release/hermes-lite stats
+# → Shows cache_size, skills_created, etc.
+
+# 5. Check memories
+./target/release/hermes-lite memories
+# → Shows learned preferences
+
+# 6. Check skills
+./target/release/hermes-lite skills
+# → Shows auto-created skills
+```
 
 ## Self-Sufficiency Features
 
@@ -10,33 +65,9 @@
 |---|---|---|
 | **Response Cache** | MD5 hash of queries cached in-memory | Repeated questions = instant answers |
 | **Skill Auto-Load** | Skills listed in system prompt | Agent uses learned patterns first |
-| **Smart Learning** | Only creates skills for complex tasks (>10 messages, >20 chars) | Avoids skill spam |
-| **Preference Memory** | Extracts "I prefer", "always", "never" patterns | Remembers user style |
-| **Tool Batching** | Executes all tool calls in parallel per turn | Fewer LLM round-trips |
-
-## Quick Start
-
-```bash
-cargo build --release
-export OPENAI_API_KEY=sk-...
-./target/release/hermes-lite chat
-```
-
-## Example: Self-Sufficient Workflow
-
-```bash
-# First time: Calls LLM, learns pattern
-./target/release/hermes-lite run "Backup my SQLite database"
-# → Creates skill: auto_backup_my_sqlite
-
-# Second time: Uses skill, minimal LLM
-./target/release/hermes-lite run "Backup my SQLite database"
-# → [cached] or uses skill directly
-
-# Check what it learned
-./target/release/hermes-lite skills
-./target/release/hermes-lite memories
-```
+| **Smart Learning** | Only creates skills for complex tasks | Avoids skill spam |
+| **Preference Memory** | Extracts "I prefer", "always", "never" | Remembers user style |
+| **Tool Batching** | Executes all tool calls per turn | Fewer LLM round-trips |
 
 ## All Features
 
@@ -50,15 +81,7 @@ export OPENAI_API_KEY=sk-...
 | **Security** | SSRF protection, path jail, ulimits, secrets management |
 | **Resources** | 2MB binary, 256MB RAM limit, 10s CPU limit |
 | **Deploy** | Docker, Docker Compose, systemd, bare metal |
-
-## Introspection
-
-```bash
-./target/release/hermes-lite memories 20
-./target/release/hermes-lite skills
-./target/release/hermes-lite backup > backup.sql
-./target/release/hermes-lite stats  # Shows cache_size
-```
+| **Tests** | Unit tests, integration tests, CI pipeline |
 
 ## Resource Limits
 
@@ -71,14 +94,32 @@ export OPENAI_API_KEY=sk-...
 | HTTP Body | 100KB max |
 | SQLite | WAL, 16MB cache |
 
-## Build
+## Build & Test
 
 ```bash
-rustup show  # 1.98.1
-make ci
-cargo test
+rustup show
+make ci              # fmt, lint, audit, test, build
+cargo test --lib     # Unit tests (no API key)
+cargo test --test integration -- --ignored  # E2E tests (needs API key)
 cargo clippy --all-targets -- -D warnings
 cargo audit
+```
+
+## Deploy
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+### Systemd
+
+```bash
+sudo cp hermes-lite.service /etc/systemd/system/
+sudo systemctl enable hermes-lite
+sudo systemctl start hermes-lite
 ```
 
 ## License
