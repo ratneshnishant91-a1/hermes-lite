@@ -15,7 +15,6 @@ Use tools when they help. Stay inside the workspace. Save durable facts with mem
 If a listed skill matches the task, skill_load it first. When finished, give a concise final answer."#;
 
 pub struct Agent {
-    cfg: Config,
     store: Store,
     skills: Skills,
     model: Model,
@@ -31,11 +30,9 @@ impl Agent {
         let store = Store::open(&cfg.db_path)?;
         let workspace = Workspace::new(&cfg.workspace_root)?;
         let skills = Skills::new(&cfg.skills_root);
-        let session_id = store.latest_session()?.unwrap_or(0);
-        let session_id = if session_id == 0 {
-            store.create_session()?
-        } else {
-            session_id
+        let session_id = match store.latest_session()? {
+            Some(id) if id > 0 => id,
+            _ => store.create_session()?
         };
         let mut prompt = format!("{SYSTEM}\n\n{}", skills.catalog_text());
         if let Ok(facts) = store.search_memories("", 8) {
@@ -47,11 +44,15 @@ impl Agent {
             }
         }
         let context = Context::load(&store, session_id, &prompt)?;
-        let tools = ToolRegistry::new(cfg.clone(), workspace.clone(), store_reopen(&cfg.db_path)?, skills.clone());
+        let tools = ToolRegistry::new(
+            cfg.clone(),
+            workspace,
+            Store::open(&cfg.db_path)?,
+            skills.clone(),
+        );
         let learner = SelfLearner::load(&cfg.workspace_root)?;
         let model = Model::new(&cfg.model.default_model);
         Ok(Self {
-            cfg,
             store,
             skills,
             model,
@@ -67,6 +68,10 @@ impl Agent {
         self.context.session_id
     }
 
+    pub fn tools(&self) -> &ToolRegistry {
+        &self.tools
+    }
+
     pub fn learning_stats(&self) -> Value {
         json!({
             "total_events": self.learner.log.total_learning_events,
@@ -80,15 +85,21 @@ impl Agent {
         crate::security::InputValidator::validate_message(user_message).map_err(anyhow::Error::msg)?;
         self.current_task = Some(user_message.chars().take(200).collect());
         self.task_start = self.context.messages.len();
-        self.context.add(&self.store, json!({"role":"user","content":user_message}))?;
+        self.context
+            .add(&self.store, json!({"role":"user","content":user_message}))?;
 
         let mut final_text = String::from("Agent stopped: maximum tool iterations reached.");
         let mut success = false;
         for _ in 0..20 {
-            let response = self.model.generate(&self.context.prompt_messages(30), &self.tools.schemas())?;
+            let response = self
+                .model
+                .generate(&self.context.prompt_messages(30), &self.tools.schemas())?;
             if response.tool_calls.is_empty() {
                 final_text = response.text.unwrap_or_default();
-                self.context.add(&self.store, json!({"role":"assistant","content":final_text}))?;
+                self.context.add(
+                    &self.store,
+                    json!({"role":"assistant","content":final_text}),
+                )?;
                 success = true;
                 break;
             }
@@ -106,7 +117,10 @@ impl Agent {
                         Err(err) => json!({"error": err.to_string()}),
                     }
                 };
-                self.context.add(&self.store, json!({"role":"assistant","tool_calls":[call.clone()]}))?;
+                self.context.add(
+                    &self.store,
+                    json!({"role":"assistant","tool_calls":[call.clone()]}),
+                )?;
                 self.context.add(
                     &self.store,
                     json!({
@@ -119,14 +133,13 @@ impl Agent {
             }
         }
         if let Some(task) = self.current_task.clone() {
-            let msgs = self.context.messages[self.task_start.min(self.context.messages.len())..].to_vec();
-            let _ = self.learner.learn(&self.store, &self.skills, &task, &msgs, &final_text, success);
+            let start = self.task_start.min(self.context.messages.len());
+            let msgs = self.context.messages[start..].to_vec();
+            let _ = self
+                .learner
+                .learn(&self.store, &self.skills, &task, &msgs, &final_text, success);
         }
         self.current_task = None;
         Ok(final_text)
     }
-}
-
-fn store_reopen(path: &str) -> Result<Store> {
-    Store::open(path)
 }
