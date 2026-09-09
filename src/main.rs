@@ -19,7 +19,7 @@ enum Commands {
     Run { prompt: String },
     Stats,
     Gateway {
-        #[arg(long, default_value = "127.0.0.1:8000")]
+        #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")]
         bind: String,
     },
     /// JSON-RPC tools over stdin/stdout (MCP-shaped)
@@ -38,6 +38,10 @@ fn main() -> Result<()> {
     match cli.command.unwrap_or(Commands::Chat) {
         Commands::Chat => repl(&mut agent),
         Commands::Run { prompt } => {
+            if prompt == "healthcheck" {
+                println!("ok");
+                return Ok(());
+            }
             println!("{}", agent.run(&prompt)?);
             Ok(())
         }
