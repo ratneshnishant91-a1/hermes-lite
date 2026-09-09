@@ -27,8 +27,12 @@ enum Commands {
     Backup,
     Agents { #[command(subcommand)] action: AgentCommands },
     Goals,
-    /// Set a constraint (e.g., avoid_network true)
     Constraint { key: String, value: String },
+    /// Manage cron jobs
+    Cron {
+        #[command(subcommand)]
+        action: CronCommands,
+    },
     Gateway { #[arg(long, default_value = "127.0.0.1:8000", env = "HERMES_BIND")] bind: String },
     Mcp,
 }
@@ -38,6 +42,16 @@ enum AgentCommands {
     Spawn { task: String },
     List,
     Get { task_id: String },
+}
+
+#[derive(Subcommand)]
+enum CronCommands {
+    /// Add a cron job: cron add "backup" "every 1h" "shell" "rm -rf /tmp/*"
+    Add { name: String, schedule: String, tool: String, args: String },
+    /// List all cron jobs
+    List,
+    /// Remove a cron job
+    Remove { job_id: String },
 }
 
 fn main() -> Result<()> {
@@ -100,6 +114,26 @@ fn main() -> Result<()> {
             println!("Constraint set: {key}={value}");
             Ok(())
         }
+        Commands::Cron { action } => {
+            let store = Store::open(&config.db_path)?;
+            match action {
+                CronCommands::Add { name, schedule, tool, args } => {
+                    let args_json = serde_json::json!({"command": args});
+                    let job = store.create_cron_job(&uuid::Uuid::new_v4().to_string(), &name, &schedule, &tool, &args_json.to_string())?;
+                    println!("Cron job added: {name} ({schedule})");
+                }
+                CronCommands::List => {
+                    for job in store.list_cron_jobs()? {
+                        println!("[{}] {} - {} (next: {}, runs: {})", job.id, job.name, job.schedule, job.next_run, job.run_count);
+                    }
+                }
+                CronCommands::Remove { job_id } => {
+                    store.delete_cron_job(&job_id)?;
+                    println!("Cron job removed: {job_id}");
+                }
+            }
+            Ok(())
+        }
         Commands::Gateway { bind } => { let mut agent = Agent::new(config.clone())?; gateway(&mut agent, &bind) }
         Commands::Mcp => { let agent = Agent::new(config.clone())?; hermes_lite::mcp::serve(agent.tools()) }
     }
@@ -107,7 +141,7 @@ fn main() -> Result<()> {
 
 fn repl(agent: &mut Agent) -> Result<()> {
     println!("Hermes-Lite v2.0 — Agentic mode");
-    println!("session={}  cmds: exit | stats | goals | constraint\n", agent.session_id());
+    println!("session={}  cmds: exit | stats | goals | cron | constraint\n", agent.session_id());
     let stdin = io::stdin();
     loop {
         print!("You: "); io::stdout().flush()?;
@@ -138,7 +172,7 @@ fn gateway(agent: &mut Agent, bind: &str) -> Result<()> {
                 let msg = req.split("\r\n\r\n").nth(1).and_then(|b| serde_json::from_str::<serde_json::Value>(b).ok()).and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_owned)).unwrap_or_default();
                 match agent.run(&msg) { Ok(a) => ("200 OK", format!(r#"{{"response":"{}"}}"#, a)), Err(e) => ("500 Internal Server Error", format!(r#"{{"error":"{}"}}"#, e)) }
             } else { ("404 Not Found", r#"{"error":"not found"}"#.into()) };
-        let resp = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        let resp = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}", body.len());
         let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
     }
     Ok(())

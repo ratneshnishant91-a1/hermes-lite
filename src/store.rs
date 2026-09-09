@@ -4,6 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct Message {
@@ -23,8 +25,31 @@ pub struct GoalRecord {
     pub current_step: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct CronJobRecord {
+    pub id: String,
+    pub name: String,
+    pub schedule: String,
+    pub tool_name: String,
+    pub arguments: String,
+    pub enabled: bool,
+    pub last_run: Option<String>,
+    pub next_run: String,
+    pub run_count: i64,
+}
+
 pub struct Store {
     db: Connection,
+    scheduler_running: Arc<AtomicBool>,
+}
+
+impl Clone for Store {
+    fn clone(&self) -> Self {
+        Self {
+            db: Connection::open(self.db.path()).unwrap(),
+            scheduler_running: self.scheduler_running.clone(),
+        }
+    }
 }
 
 impl Store {
@@ -73,11 +98,32 @@ impl Store {
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS cron_jobs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                schedule TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                arguments TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run TEXT,
+                next_run TEXT NOT NULL,
+                run_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+             );
              CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, id);
              CREATE INDEX IF NOT EXISTS idx_memories_content ON memories(content);
-             CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);",
+             CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+             CREATE INDEX IF NOT EXISTS idx_cron_jobs_next_run ON cron_jobs(next_run);",
         )?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            scheduler_running: Arc::new(AtomicBool::new(true)),
+        })
+    }
+
+    pub fn is_scheduler_running(&self) -> bool {
+        self.scheduler_running.load(Ordering::SeqCst)
     }
 
     pub fn create_session(&self) -> Result<i64> {
@@ -145,8 +191,53 @@ impl Store {
         Ok(self.db.query_row("SELECT value FROM constraints WHERE key=?1", params![key], |r| r.get(0)).optional()?)
     }
 
+    // Cron job methods
+    pub fn create_cron_job(&self, id: &str, name: &str, schedule: &str, tool_name: &str, arguments: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let next_run = (Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+        self.db.execute(
+            "INSERT INTO cron_jobs(id, name, schedule, tool_name, arguments, enabled, next_run, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?7)",
+            params![id, name, schedule, tool_name, arguments, next_run, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_cron_job(&self, job: &crate::cron::CronJob) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let last_run = job.last_run.map(|dt| dt.to_rfc3339());
+        self.db.execute(
+            "UPDATE cron_jobs SET last_run=?1, next_run=?2, run_count=?3, updated_at=?4 WHERE id=?5",
+            params![last_run, job.next_run.to_rfc3339(), job.run_count, now, job.id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_cron_jobs(&self) -> Result<Vec<crate::cron::CronJob>> {
+        let mut stmt = self.db.prepare("SELECT id, name, schedule, tool_name, arguments, enabled, last_run, next_run, run_count FROM cron_jobs ORDER BY next_run")?;
+        let rows = stmt.query_map([], |r| {
+            let last_run: Option<String> = r.get(6)?;
+            Ok(crate::cron::CronJob {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                schedule: r.get(2)?,
+                tool_name: r.get(3)?,
+                arguments: serde_json::from_str(&r.get::<_, String>(4)?)?,
+                enabled: r.get::<_, i64>(5)? == 1,
+                last_run: last_run.and_then(|s| DateTime::parse_from_rfc3339(&s).ok()).map(|dt| dt.with_timezone(&Utc)),
+                next_run: DateTime::parse_from_rfc3339(&r.get::<_, String>(7)?)?.with_timezone(&Utc),
+                run_count: r.get(8)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn delete_cron_job(&self, job_id: &str) -> Result<()> {
+        self.db.execute("DELETE FROM cron_jobs WHERE id=?1", params![job_id])?;
+        Ok(())
+    }
+
     pub fn backup(&self, out: &mut dyn Write) -> Result<()> {
-        for table in ["sessions", "messages", "memories", "goals", "constraints"] {
+        for table in ["sessions", "messages", "memories", "goals", "constraints", "cron_jobs"] {
             let mut stmt = self.db.prepare(&format!("SELECT * FROM {table}"))?;
             let rows = stmt.query_map([], |r| {
                 let mut values = Vec::new();
