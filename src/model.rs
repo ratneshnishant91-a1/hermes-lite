@@ -1,5 +1,4 @@
 use anyhow::{bail, Context, Result};
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
 
@@ -18,7 +17,8 @@ pub struct Model {
 impl Model {
     pub fn new(default_model: &str) -> Self {
         Self {
-            model: env::var("HERMES_MODEL").unwrap_or_else(|_| default_model.to_string()),
+            model: env::var("HERMES_MODEL")
+                .unwrap_or_else(|_| default_model.to_string()),
         }
     }
 
@@ -73,15 +73,15 @@ fn resolve_endpoint(model: &str) -> Result<(String, String, String, String)> {
     bail!("Set OPENAI_API_KEY or OPENROUTER_API_KEY")
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
 }
-#[derive(Deserialize, Default)]
+#[derive(serde::Deserialize, Default)]
 struct Choice {
     message: Msg,
 }
-#[derive(Deserialize, Default, Serialize)]
+#[derive(serde::Deserialize, Default)]
 struct Msg {
     content: Option<String>,
     tool_calls: Option<Vec<Value>>,

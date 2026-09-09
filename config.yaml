@@ -1,101 +1,25 @@
-# Hermes-Lite v1.5 - Configuration
-
-gateway:
-  enabled: false
-  host: "127.0.0.1"
-  port: 8000
-  telegram_token: ""
-  telegram_allowed_users: []
-  telegram_allow_all: false
-  discord_token: ""
-  discord_guild_id: ""
-  discord_allowed_users: []
-  discord_allow_all: false
-  allowed_users: []
-  allow_all: false
-  require_auth: true
-
-sandbox:
-  mode: "docker"
-  timeout: 30
-  memory_limit_mb: 512
-  cpu_limit: 1.0
-  network_enabled: false  # Disabled by default for security
-  workspace_only: true
-  docker_image: "python:3.11-slim"
-  docker_forward_env: []
-
-# Network access configuration
-network:
-  enabled: false  # Set to true to allow internet access
-  allowed_domains: []  # Empty = all domains (use with caution)
-  # Example allowlist:
-  # allowed_domains:
-  #   - "api.github.com"
-  #   - "raw.githubusercontent.com"
-  #   - "pypi.org"
-  #   - "docs.python.org"
-  blocked_ports: [22, 23, 25, 53, 135, 139, 445, 3306, 3389, 5432, 6379, 27017]
-  max_response_size: 10485760  # 10MB
-  timeout: 30
-
-observability:
-  enabled: true
-  log_level: "INFO"
-  log_file: "hermes-lite.log"
-  metrics_enabled: true
-  tracing_enabled: false
-  retention_days: 7
-  redact_secrets: true
-
-model:
-  providers:
-    - name: "openrouter"
-      priority: 1
-      enabled: true
-    - name: "openai"
-      priority: 2
-      enabled: true
-    - name: "anthropic"
-      priority: 3
-      enabled: true
-    - name: "gemini"
-      priority: 4
-      enabled: true
-    - name: "local"
-      priority: 5
-      enabled: false
-  default_model: "gpt-4.1-mini"
-  max_tokens: 4096
-  fallback_providers: []
-
-approvals:
-  mode: "manual"
-  hardline_patterns:
-    - '\\brm\\s+-[^\\s]*r\\s+/'
-    - '\\bmkfs\\b'
-    - '\\bdd\\s+if='
-    - '\\b:()\\s*\\{\\s*:\\s*\\|\\s*:\\s*&\\s*\\}\\s*;'
-    - '\\bkill\\s+-1\\s+1\\b'
-    - '\\bshutdown\\b.*-h'
-    - '\\breboot\\b'
-  dangerous_patterns:
-    - '\\brm\\s+-[^\\s]*r'
-    - '\\bchmod\\s+(777|666|a\\+w|o\\+w)'
-    - '\\bDROP\\s+(TABLE|DATABASE)\\b'
-    - '\\bDELETE\\s+FROM\\b(?!.*\\bWHERE\\b)'
-    - '\\bTRUNCATE\\s+(TABLE)?\\s*\\w'
-    - '\\b(curl|wget)\\b.*\\|\\s*(ba)?sh\\b'
-    - '\\bbash\\s+-c\\b'
-    - '\\bpython\\s+-c\\b'
-    - '\\bsudo\\b'
-    - '\\bpasswd\\b'
-    - '\\bvisudo\\b'
-    - '\\bssh\\b.*@'
-    - '\\bscp\\b'
-    - '\\brsync\\b.*@'
+# Hermes-Lite v2.0 (Rust core)
+# Keep this file minimal; most config is via env vars.
 
 workspace_root: "workspace"
 db_path: "hermes.db"
 skills_root: "skills"
-mcp_servers: {}
+
+model:
+  default_model: "gpt-4.1-mini"
+
+sandbox:
+  mode: "subprocess"
+  timeout: 30
+  network_enabled: false
+
+network:
+  enabled: true
+  allowed_domains: []
+  max_response_size: 10485760
+  timeout: 30
+
+gateway:
+  host: "127.0.0.1"
+  port: 8000
+  require_auth: true
