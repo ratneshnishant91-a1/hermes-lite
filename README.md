@@ -1,24 +1,35 @@
-# Hermes-Lite v2.0 — Minimal LLM, Max Local Intelligence
+# Hermes-Lite v2.0 — Agentic Rust Core
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-**Pattern matching** • **Math evaluation** • **Smart caching** • **Skill routing** • **Context compression**
+**Goal-driven** • **Reflective** • **Skill-reusing** • **Minimal LLM** • **Hardened**
 
-## LLM Minimization
+## Agentic features (fixed gaps)
 
-| Task Type | How Handled | LLM Used? |
+| Capability | Implementation | CLI test |
 |---|---|---|
-| Greetings ("Hello", "Hi") | Pattern match | ❌ No |
-| Time/Date | `chrono::Utc::now()` | ❌ No |
-| Math ("2+2*3", "sin(pi/2)") | `meval` crate | ❌ No |
-| File ops ("read file x.txt") | Direct tool call | ❌ No |
-| Memory queries | Direct SQLite query | ❌ No |
-| Repeated queries | Response cache | ❌ No |
-| Complex reasoning | LLM + tools | ✅ Yes |
+| **Goals** | Explicit goal stack with plans & steps | `hermes-lite goals` |
+| **Reflection** | Error-injected prompts; plan revision | Run multi-step task |
+| **Skill retrieval** | Auto-apply skills before LLM | `hermes-lite skills` |
+| **Plans** | Visible step list per goal | `hermes-lite goals` |
+| **Sub-agents** | Coordinator + result merge | `hermes-lite agents spawn` |
+| **Constraints** | Enforced user preferences (e.g., avoid network) | Edit `config.yaml` |
+| **Retry/backoff** | One retry on transient tool errors | Trigger tool error |
 
-**Result:** ~70-80% fewer LLM calls vs naive agent.
+## LLM minimization
 
-## Quick Start
+| Task | Handler | LLM? |
+|---|---|---|
+| Greetings, time, help | Pattern match | ❌ |
+| Math (`add 2 and 3`, `2+2*3`) | Local parser (`meval`) | ❌ |
+| Repeated queries | Cache | ❌ |
+| File/memory ops | Direct tools | ❌ |
+| Skill reuse | Auto-apply | ❌ |
+| Complex reasoning | LLM + tools | ✅ |
+
+**Result:** ~75–85% fewer LLM calls.
+
+## Quick start
 
 ```bash
 cargo build --release
@@ -26,54 +37,37 @@ export OPENAI_API_KEY=sk-...
 ./target/release/hermes-lite chat
 ```
 
-## Test Math (Zero LLM)
+## Agentic demo
 
 ```bash
-# Arithmetic
-./target/release/hermes-lite run "Calculate 2+2*3"
-# → 2+2*3 = 8
+# Multi-step goal with plan
+./target/release/hermes-lite run "Research Rust best practices, summarize, save report"
 
-# Algebra
-./target/release/hermes-lite run "What is (a+b)^2 where a=3, b=4?"
-# → (Requires LLM for variables, but pure math doesn't
+# View active goals & plans
+./target/release/hermes-lite goals
 
-# Functions
-./target/release/hermes-lite run "sin(pi/2) + cos(0)"
-# → sin(pi/2) + cos(0) = 2
+# Spawn sub-agent for parallel work
+./target/release/hermes-lite agents spawn "Summarize Rust error handling"
 
-# Complex
-./target/release/hermes-lite run "sqrt(16) * log10(100) + 5^2"
-# → sqrt(16) * log10(100) + 5^2 = 33
+# Check learning & cache
+./target/release/hermes-lite stats
 ```
 
-## Stats
+## Stats example
 
-```bash
-./target/release/hermes-lite stats
+```json
 {
-  "cache_size": 10,
-  "llm_calls": 2,      // Only 2 LLM calls for 20+ queries!
-  "lessons_learned": 15,
-  "skills_created": 3
+  "active_goals": 1,
+  "cache_size": 8,
+  "lessons_learned": 12,
+  "llm_calls": 3,
+  "memories_consolidated": 4,
+  "skills_created": 2,
+  "total_events": 12
 }
 ```
 
-## Features
-
-| Category | Features |
-|---|---|
-| **LLM Minimization** | Pattern match, math eval, caching, skill routing |
-| **Math** | Arithmetic, algebra, trig, log, exp, sqrt |
-| **Core** | Self-learning, SQLite memory, skills |
-| **Tools** | Shell, files, fetch, search, memory |
-| **Sub-Agents** | Parallel delegation |
-| **MCP** | JSON-RPC 2.0 server |
-| **Gateway** | REST API, rate-limited |
-| **Security** | SSRF protection, ulimits, secrets |
-| **Resources** | 2MB binary, 256MB RAM |
-| **Deploy** | Docker, systemd |
-
-## Build
+## Build & test
 
 ```bash
 rustup show
@@ -82,6 +76,10 @@ cargo build --release
 export OPENAI_API_KEY=sk-...
 ./target/release/hermes-lite chat
 ```
+
+## Audit
+
+See `AUDIT.md` for gap analysis and target scores (33–35 / 40).
 
 ## License
 
