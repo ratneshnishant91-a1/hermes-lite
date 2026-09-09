@@ -20,6 +20,9 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
@@ -28,6 +31,9 @@ jobs:
 
       - name: Lint (clippy)
         run: cargo clippy --all-targets -- -D warnings
+
+      - name: Security audit (dependencies)
+        run: cargo audit || true  # Warn but don't fail for now
 
       - name: Run tests
         run: cargo test --all-targets

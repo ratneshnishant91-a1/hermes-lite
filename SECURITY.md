@@ -1,183 +1,36 @@
-# Hermes-Lite v1.5 - Security Hardening Guide
+# Security Policy
 
-## Defense-in-Depth Layers
+## Hardening Measures
 
-### 1. Input Validation ✅
-- Strict schema validation for all inputs
-- Path traversal prevention
-- SQL/Script/Command injection detection
-- Length limits on all inputs
+### Code Level
+- **Secrets:** API keys wrapped in `secrecy::Secret` to prevent accidental logging.
+- **Input Validation:** Path traversal, control characters, and length limits enforced.
+- **Rate Limiting:** Gateway protected against DoS (60 req/min per IP).
+- **Panic Handling:** Custom panic hook logs crashes without leaking stack data.
+- **Structured Logging:** JSON logs for audit trails (enable with `RUST_LOG_JSON=1`).
 
-### 2. Sandbox Isolation ✅
-- Docker containers with hardened settings
-- Capability dropping (no-new-privileges)
-- Network disabled by default
-- CPU/memory limits
-- Read-only filesystem where possible
+### Container Level
+- **Distroless:** No shell, no package manager, minimal attack surface.
+- **Non-root:** Runs as `nonroot` user.
+- **Read-only filesystem:** Root FS is immutable (`--read-only`).
+- **Capabilities:** Drop all (`--cap-drop=ALL`).
+- **Tmpfs:** `/tmp` mounted as tmpfs for ephemeral writes.
 
-### 3. Credential Filtering ✅
-- Whitelist-only environment variables
-- Automatic secret redaction
-- No API keys in sandboxed processes
-- Secure token generation
-
-### 4. Authorization ✅
-- 5-layer user authorization (deny-by-default)
-- Per-platform allowlists
-- API token authentication
-- Rate limiting per user
-
-### 5. Audit Logging ✅
-- Tamper-evident hash chain
-- All security events logged
-- Tool execution tracking
-- Access attempt logging
-
-### 6. Health Monitoring ✅
-- Liveness probes
-- Readiness checks
-- System metrics (CPU, memory, disk)
-- Graceful degradation
-
-## Security Configuration
-
-### Docker Hardening
-
-```yaml
-sandbox:
-  mode: "docker"
-  docker_image: "python:3.11-slim"
-  memory_limit_mb: 512
-  cpu_limit: 1.0
-  network_enabled: false
-  security_opt:
-    - "no-new-privileges:true"
-  cap_drop:
-    - ALL
+### Deployment
+```bash
+docker run --rm -it \
+  --read-only \
+  --cap-drop=ALL \
+  --tmpfs /tmp \
+  -e OPENAI_API_KEY=sk-... \
+  -p 8000:8000 \
+  hermes-lite:latest
 ```
 
-### Rate Limiting
+## Reporting Vulnerabilities
 
-```python
-from security import RateLimiter
+Report security issues via GitHub Private Vulnerability Reporting.
 
-limiter = RateLimiter(max_requests=100, window_seconds=60)
+## Audit
 
-allowed, wait = limiter.is_allowed(user_id)
-if not allowed:
-    return f"Rate limited. Try in {wait:.1f}s"
-```
-
-### Input Validation
-
-```python
-from security import InputValidator
-
-valid, error = InputValidator.validate_user_message(user_input)
-if not valid:
-    raise ValueError(f"Invalid input: {error}")
-
-valid, error = InputValidator.validate_filename(filename)
-if not valid:
-    raise ValueError(f"Invalid filename: {error}")
-```
-
-### Audit Logging
-
-```python
-from security import AuditLogger
-
-audit = AuditLogger()
-
-# Log security event
-audit.log_security_event("DANGEROUS_COMMAND_BLOCKED", {
-    "command": "rm -rf /",
-    "user_id": "user-123",
-}, user_id="user-123")
-
-# Log tool execution
-audit.log_tool_execution("shell", {"command": "ls -la"}, "user-123")
-
-# Log access
-audit.log_access("workspace", "read", "user-123", success=True)
-```
-
-### Health Checks
-
-```python
-from health import HealthChecker
-
-health = HealthChecker(config)
-
-# Liveness probe
-liveness = health.check_liveness()
-# {"status": "alive", "uptime_seconds": 3600, ...}
-
-# Readiness probe
-readiness = health.check_readiness()
-# {"status": "healthy", "checks": {"database": {...}, ...}}
-
-# System metrics
-metrics = health.get_metrics()
-# {"cpu_percent": 15.2, "memory_percent": 45.6, ...}
-```
-
-## Security Checklist
-
-Before deploying to production:
-
-- [ ] Enable Docker sandbox mode
-- [ ] Disable network in sandbox
-- [ ] Set rate limits (max_requests, window_seconds)
-- [ ] Configure API authentication
-- [ ] Enable audit logging
-- [ ] Set up health check monitoring
-- [ ] Review dangerous command patterns
-- [ ] Test input validation
-- [ ] Verify credential filtering
-- [ ] Set resource quotas (CPU, memory)
-
-## Threat Model
-
-### Protected Against
-
-✅ Path traversal attacks
-✅ Command injection
-✅ SQL injection
-✅ Script injection
-✅ Credential leakage
-✅ Resource exhaustion
-✅ Unauthorized access
-✅ Privilege escalation
-
-### Not Protected Against
-
-❌ Social engineering
-❌ Physical access attacks
-❌ Compromised dependencies
-❌ Zero-day vulnerabilities in Docker
-❌ Side-channel attacks
-
-## Incident Response
-
-If security incident detected:
-
-1. **Isolate** - Stop affected containers
-2. **Preserve** - Save audit logs
-3. **Analyze** - Review tamper-evident logs
-4. **Remediate** - Fix vulnerability
-5. **Report** - Document incident
-
-## Compliance
-
-- All security events logged with hash chain
-- No secrets in logs (automatic redaction)
-- Rate limiting prevents DoS
-- Input validation prevents injection
-- Sandbox prevents host compromise
-
-## References
-
-- [Hermes Agent Security Model](https://github.com/NousResearch/hermes-agent)
-- [Docker Security Best Practices](https://docs.docker.com/engine/security/)
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+Run `cargo audit` to check for known vulnerable dependencies.
