@@ -1,25 +1,20 @@
-# Hermes-Lite v2.0 — Complete Rust Agent Platform
+# Hermes-Lite v2.0 — Self-Sufficient Rust Agent
 
 [![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
 
-**Rustc 1.98.1** • **Edition 2024** • **Hardened** • **Lightweight** • **Complete**
+**Minimizes LLM calls** • **Caches responses** • **Auto-creates skills** • **Learns preferences**
 
-## Features
+## Self-Sufficiency Features
 
-| Category | Features |
-|---|---|
-| **Core** | Self-learning, SQLite memory, skill creation, context compression |
-| **Tools** | Shell, files, fetch, search, memory, skills |
-| **Sub-Agents** | Parallel task delegation, background execution |
-| **MCP** | JSON-RPC 2.0 server (Cursor, Claude Code compatible) |
-| **Gateway** | REST API, rate-limited, token auth |
-| **Security** | SSRF protection, path jail, ulimits, secrets management |
-| **Resources** | 2MB binary, 256MB RAM limit, 10s CPU limit per command |
-| **Deploy** | Docker, Docker Compose, systemd, bare metal |
+| Feature | How It Works | Benefit |
+|---|---|---|
+| **Response Cache** | MD5 hash of queries cached in-memory | Repeated questions = instant answers |
+| **Skill Auto-Load** | Skills listed in system prompt | Agent uses learned patterns first |
+| **Smart Learning** | Only creates skills for complex tasks (>10 messages, >20 chars) | Avoids skill spam |
+| **Preference Memory** | Extracts "I prefer", "always", "never" patterns | Remembers user style |
+| **Tool Batching** | Executes all tool calls in parallel per turn | Fewer LLM round-trips |
 
 ## Quick Start
-
-### Rust CLI
 
 ```bash
 cargo build --release
@@ -27,32 +22,34 @@ export OPENAI_API_KEY=sk-...
 ./target/release/hermes-lite chat
 ```
 
-### Sub-Agents
+## Example: Self-Sufficient Workflow
 
 ```bash
-# Spawn parallel task
-./target/release/hermes-lite agents spawn "Research Python best practices"
+# First time: Calls LLM, learns pattern
+./target/release/hermes-lite run "Backup my SQLite database"
+# → Creates skill: auto_backup_my_sqlite
 
-# List tasks
-./target/release/hermes-lite agents list
+# Second time: Uses skill, minimal LLM
+./target/release/hermes-lite run "Backup my SQLite database"
+# → [cached] or uses skill directly
 
-# Get result
-./target/release/hermes-lite agents get <task_id>
+# Check what it learned
+./target/release/hermes-lite skills
+./target/release/hermes-lite memories
 ```
 
-### MCP Server
+## All Features
 
-```bash
-./target/release/hermes-lite mcp
-# Use with Cursor, Claude Code, etc.
-```
-
-### Docker
-
-```bash
-cp .env.example .env
-docker compose up -d
-```
+| Category | Features |
+|---|---|
+| **Core** | Self-learning, SQLite memory, skill creation, response caching |
+| **Tools** | Shell, files, fetch, search, memory, skills, skill_create |
+| **Sub-Agents** | Parallel task delegation, background execution |
+| **MCP** | JSON-RPC 2.0 server (Cursor, Claude Code compatible) |
+| **Gateway** | REST API, rate-limited, token auth |
+| **Security** | SSRF protection, path jail, ulimits, secrets management |
+| **Resources** | 2MB binary, 256MB RAM limit, 10s CPU limit |
+| **Deploy** | Docker, Docker Compose, systemd, bare metal |
 
 ## Introspection
 
@@ -60,7 +57,7 @@ docker compose up -d
 ./target/release/hermes-lite memories 20
 ./target/release/hermes-lite skills
 ./target/release/hermes-lite backup > backup.sql
-./target/release/hermes-lite stats
+./target/release/hermes-lite stats  # Shows cache_size
 ```
 
 ## Resource Limits
@@ -74,19 +71,11 @@ docker compose up -d
 | HTTP Body | 100KB max |
 | SQLite | WAL, 16MB cache |
 
-## Security
-
-- Secrets: `secrecy::Secret` (never logged)
-- Input: Path traversal, control chars blocked
-- Gateway: 60 req/min/IP rate limit
-- Container: Distroless, non-root, read-only, `cap_drop=ALL`
-- Systemd: CPU 50%, Memory 512M max
-
 ## Build
 
 ```bash
 rustup show  # 1.98.1
-make ci      # fmt, lint, audit, test, build
+make ci
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo audit
