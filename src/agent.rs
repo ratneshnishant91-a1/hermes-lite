@@ -89,7 +89,7 @@ impl Agent {
         })
     }
 
-    /// Smart routing: pattern → math → cache → skill → LLM
+    /// Smart routing: pattern → math (symbolic) → math (words) → cache → skill → LLM
     pub fn run(&mut self, user_message: &str) -> Result<String> {
         crate::security::InputValidator::validate_message(user_message).map_err(anyhow::Error::msg)?;
         
@@ -101,7 +101,7 @@ impl Agent {
             return Ok(response);
         }
 
-        // 2. Math evaluation (arithmetic, algebra, functions)
+        // 2. Math: symbolic expressions (`2+2`, `sqrt(9)`) or natural-language (`add 2 and 3`)
         if let Some(math_result) = self.evaluate_math(user_message) {
             return Ok(math_result);
         }
@@ -211,41 +211,9 @@ impl Agent {
         None
     }
 
-    /// Evaluate math expressions locally (no LLM)
+    /// Evaluate math locally (symbolic or natural-language)
     fn evaluate_math(&self, query: &str) -> Option<String> {
-        // Extract math expression from query
-        let patterns = [
-            Regex::new(r"calculate\s+(.+)").unwrap(),
-            Regex::new(r"what is\s+(.+[+\-*/^].+)").unwrap(),
-            Regex::new(r"solve\s+(.+)").unwrap(),
-            Regex::new(r"eval(uate)?\s+(.+)").unwrap(),
-        ];
-        
-        let expr = patterns.iter()
-            .filter_map(|re| re.captures(query).and_then(|c| c.get(1).map(|m| m.as_str())))
-            .next()
-            .or_else(|| {
-                // If query is purely mathematical (e.g., "2+2*3")
-                if query.chars().any(|c| "+-*/^().".contains(c)) && query.chars().any(|c| c.is_digit(10)) {
-                    Some(query)
-                } else {
-                    None
-                }
-            })?;
-        
-        // Evaluate with meval crate
-        match meval::eval_str(expr) {
-            Ok(result) => {
-                // Format nicely (remove trailing zeros)
-                let formatted = if result.fract() == 0.0 {
-                    format!("{}", result as i64)
-                } else {
-                    format!("{:.6}", result).trim_end_matches('0').trim_end_matches('.').to_string()
-                };
-                Some(format!("{} = {}", expr, formatted))
-            }
-            Err(_) => None,
-        }
+        crate::math::evaluate_query(query)
     }
 
     /// Direct skill/tool execution
