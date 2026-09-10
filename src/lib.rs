@@ -3,6 +3,9 @@
 pub mod agent;
 pub mod config;
 pub mod cron;
+pub mod events;
+pub mod harness;
+pub mod learning;
 pub mod math;
 pub mod mcp;
 pub mod memory;
@@ -15,9 +18,9 @@ pub mod workspace;
 
 pub use agent::Agent;
 pub use config::Config;
-pub use memory::Memory;
-pub use orchestration::{Sequential, Concurrent, Handoff};
+pub use events::{Event, EventLog, RunSummary};
+pub use harness::{HarnessManifest, HarnessStore};
+pub use learning::{FailureCluster, LearningReport};
 pub use store::Store;
 pub use tools::Tools;
-pub use trajectory::Trajectory;
 pub use workspace::Workspace;
