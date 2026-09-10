@@ -1,217 +1,104 @@
-# Hermes-Lite v2.0 — Personal AI Agent by Ratnesh Nishant
+# Hermes-Lite v2.0
 
-**Built for:** Apex (Kimi/Claude) integration  
-**Philosophy:** Minimalist, secure, resource-efficient, LLM-minimizing  
+A small, secure, durable agent runtime written in Rust 2024.
 
-[![CI](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/ratneshnishant91-a1/hermes-lite/actions/workflows/ci.yml)
+## What this is
 
-## Quick Start
+Hermes-Lite is a **local-first runtime** that provides:
 
-```bash
-cargo build --release
-export OPENAI_API_KEY=sk-...
-./target/release/hermes-lite chat
-```
+- **Workspace safety:** all file operations are confined to a configured root; path-escape attempts are rejected.
+- **Prompt safety:** basic validation and rate-limiting primitives.
+- **Persistent memory:** SQLite-backed key/value store for facts and small notes.
+- **Cron jobs:** persistent, interval-based shell tasks with execution tracking.
+- **MCP server:** a minimal Model Context Protocol server over stdio exposing `read_file` and `write_file`.
+- **CLI interface:** simple commands for running prompts, managing cron jobs, and ticking the scheduler.
 
-## Personal Features
+This is **not** a general-purpose LLM agent by itself. It is designed to be connected to an external LLM adapter or MCP client that supplies reasoning and tool orchestration.
 
-| Feature | Why It Matters |
-|---|---|
-| **2MB binary** | Runs on $5 VPS, Raspberry Pi |
-| **256MB RAM** | 4x less than Python alternatives |
-| **70-80% fewer LLM calls** | Saves $100s/month on API costs |
-| **SSRF protection** | Safe for untrusted inputs |
-| **Distroless Docker** | Minimal attack surface |
-| **5-pillar architecture** | Memory, Skills, Soul, Crons, Self-improving |
-| **Apex integration** | HTTP gateway for Kimi/Claude |
+## Stable vs experimental
 
-## Architecture
+**Stable (v2.0 baseline):**
 
-```
-Apex (Kimi/Claude)
-    ↓ HTTP/MCP
-Hermes-Lite (Your Execution Engine)
-    ├── Tools (shell, files, fetch, search)
-    ├── Memory (SQLite + MEMORY.md + USER.md)
-    ├── Skills (auto-generated SKILL.md)
-    ├── Cron (scheduled tasks)
-    ├── Sub-agents (parallel delegation)
-    └── MCP (Drive, Dropbox, GitHub, etc.)
-```
+- `hermes-lite run "..."` – local math, memory, and workspace file reads.
+- `hermes-lite mcp` – MCP server over stdio with `read_file` and `write_file`.
+- `hermes-lite cron add ...` and `hermes-lite tick` – persistent cron jobs and manual tick execution.
+- SQLite storage for memory and cron state.
+- Workspace path confinement and prompt validation.
 
-## Usage
+**Experimental (not in this baseline):**
 
-### CLI
+- Planner/executor, sub-agents, Telegram integration, HTTP gateway, and advanced networking.
+- These will be added later behind optional Cargo features once the core is proven stable.
 
-```bash
-# Chat
-./target/release/hermes-lite chat
-
-# Run single command
-./target/release/hermes-lite run "Backup my files"
-
-# Check stats
-./target/release/hermes-lite stats
-
-# List goals
-./target/release/hermes-lite goals
-
-# Manage cron
-./target/release/hermes-lite cron add "backup" "daily" "shell" "tar -czf backup.tar.gz workspace/"
-./target/release/hermes-lite cron list
-
-# Sub-agents
-./target/release/hermes-lite agents spawn "Research Rust async patterns"
-./target/release/hermes-lite agents list
-
-# MCP connections
-./target/release/hermes-lite mcp-connect drive npx -y @modelcontextprotocol/server-google-drive
-./target/release/hermes-lite mcp-connect github npx -y @modelcontextprotocol/server-github
-```
-
-### Apex Integration
-
-```python
-# In Apex (Kimi/Claude)
-import requests
-
-def execute(prompt: str):
-    response = requests.post(
-        "http://localhost:8000/chat",
-        json={"message": prompt}
-    )
-    return response.json()["response"]
-
-# Use in Apex workflow
-result = execute("Backup my workspace")
-```
-
-```bash
-# Start gateway
-./target/release/hermes-lite gateway --bind 0.0.0.0:8000
-```
-
-## Personal Benchmarks
-
-| Metric | Your Hermes-Lite | Python Alternatives |
-|---|---|---|
-| Binary size | 2MB | 100MB+ |
-| RAM usage | 256MB | 1GB+ |
-| LLM calls/100 queries | 20-30 | 100 |
-| Startup time | <100ms | 2-5s |
-| Monthly API cost | $60-90 | $300+ |
-
-**Your savings:** 70-80% cost reduction, 4x less RAM, 20x faster startup
-
-## Your 5 Pillars
-
-1. **Memory** — SQLite + `MEMORY.md` + `USER.md`
-2. **Skills** — Auto-generated `SKILL.md` with verification
-3. **Soul** — Your constraints + preferences
-4. **Crons** — Persistent scheduled jobs
-5. **Self-improving loop** — Planner/Executor + artifacts
-
-## Security (Your Hardening)
-
-- SSRF protection (private IP blocking)
-- Path jail (no `../` escapes)
-- ulimits (CPU, memory, files)
-- Distroless Docker (no shell, no package manager)
-- Seccomp/apparmor profiles
-- Read-only filesystem
-
-## Deployment (Your Stack)
-
-### Docker
-
-```bash
-docker build -t hermes-lite:latest .
-docker run --rm -it \
-  --read-only --cap-drop=ALL --tmpfs /tmp \
-  -e OPENAI_API_KEY=sk-... \
-  -p 8000:8000 \
-  hermes-lite:latest
-```
-
-### Systemd
-
-```bash
-sudo cp hermes-lite.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable hermes-lite
-sudo systemctl start hermes-lite
-```
-
-### VPS ($5/month)
-
-```bash
-# Deploy
-scp target/release/hermes-lite user@vps:/opt/hermes-lite/
-scp hermes-lite.service user@vps:/etc/systemd/system/
-ssh user@vps sudo systemctl start hermes-lite
-
-# Access
-ssh -L 8000:localhost:8000 user@vps
-curl http://localhost:8000/chat -d '{"message":"Hello"}'
-```
-
-## Your Development Workflow
+## Quick start
 
 ```bash
 # Build
 cargo build --release
 
-# Test
-cargo test --lib
+# Run a local prompt
+./target/release/hermes-lite run "add 2 and 3"
+./target/release/hermes-lite run "remember hermes is a local agent runtime"
+./target/release/hermes-lite run "recall hermes"
+./target/release/hermes-lite run "read file config.yaml"
 
-# Lint
-cargo clippy --all-targets -- -D warnings
+# Start MCP server (stdio)
+./target/release/hermes-lite mcp
 
-# Format
-cargo fmt
+# Add a cron job (every 5 minutes, echo timestamp to a file)
+./target/release/hermes-lite cron add "log-time" "every 5m" "date >> log.txt"
 
-# Docker
-docker build -t hermes-lite:latest .
-
-# Deploy
-scp target/release/hermes-lite user@vps:/opt/
+# Manually tick due cron jobs
+./target/release/hermes-lite tick
 ```
 
-## Your Next Steps
+Default configuration is loaded from `config.yaml` in the current directory:
 
-1. ✅ Integrate with Apex (Kimi/Claude) — HTTP gateway ready
-2. ✅ Add MCP clients — Drive, Dropbox, GitHub, etc.
-3. ✅ Sub-agents for parallel work — Implemented
-4. ✅ Cron scheduling — Persistent SQLite backend
-5. ⏭️ Add Telegram bot — Port from Python version
-6. ⏭️ Add Discord/Slack — As needed
+```yaml
+workspace_root: workspace
+db_path: hermes.db
+network:
+  enabled: false
+  allowed_domains: []
+sandbox:
+  timeout_secs: 10
+```
 
-## Your Philosophy
+## Project structure
 
-> "Build lean, secure, self-sufficient agents that minimize LLM dependency
-> and maximize autonomy. Deploy anywhere, cost little, work offline."
+- `src/agent.rs` – core agent runtime (math, memory, workspace tools).
+- `src/config.rs` – configuration model and YAML loader.
+- `src/cron.rs` – cron interval parsing and tick execution.
+- `src/math.rs` – local math evaluator (natural language + expressions).
+- `src/mcp.rs` – minimal MCP server over stdio.
+- `src/security.rs` – prompt validation and rate-limiter skeleton.
+- `src/store.rs` – SQLite store for memory and cron jobs.
+- `src/tools.rs` – sandboxed shell and workspace file tools.
+- `src/workspace.rs` – workspace root and path resolution logic.
+- `src/main.rs` – CLI entry point.
+- `tests/core.rs` – unit/integration tests that do not require an LLM.
 
-## Your Project
+## Security model (v2.0)
 
-- **Repo:** https://github.com/ratneshnishant91-a1/hermes-lite
-- **License:** MIT
-- **Built by:** Ratnesh Nishant (@ratneshnishant91-a1)
-- **For:** Apex (Kimi/Claude) integration
+- **No arbitrary filesystem access:** all file paths are resolved relative to `workspace_root`; attempts to escape (e.g., `../`) are rejected.
+- **Sandboxed shell:** `run_shell` blocks obviously dangerous commands and enforces a timeout.
+- **Prompt validation:** basic checks for empty input, excessive size, and control characters.
+- **No network by default:** `network.enabled` is `false` in the default config.
 
-## Your Score
+This runtime is intended to run alongside an LLM adapter that enforces higher-level policies (tool allowlists, approval flows, audit logs).
 
-| Category | Score | Notes |
-|---|---|---|
-| Features | 8/10 | Covers essentials for your use case |
-| Performance | 9/10 | 2MB, 256MB, instant startup |
-| Security | 9/10 | SSRF, ulimits, distroless |
-| Simplicity | 9/10 | Single binary, no Python |
-| Agentic capability | 8/10 | 5 pillars + sub-agents + MCP |
-| **Overall** | **8.6/10** | **Excellent for your requirements** |
+## Development
 
----
+```bash
+cargo fmt --check
+cargo check --all-targets
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+cargo build --release --locked
+```
 
-**This is your personal AI agent framework.** Optimized for your priorities:
-resource efficiency, cost minimization, security, and simplicity.
+CI runs these checks on every push/PR to `main` via `.github/workflows/ci.yml`.
 
-**Built by you. For you.**
+## License
+
+MIT
