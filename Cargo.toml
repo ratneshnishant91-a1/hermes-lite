@@ -6,6 +6,10 @@ rust-version = "1.85"
 description = "A small, secure, durable agent runtime"
 license = "MIT"
 
+[features]
+default = []
+experimental = []
+
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
