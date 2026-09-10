@@ -1,69 +1,20 @@
-use regex::Regex;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::{collections::HashMap, time::{Duration, Instant}};
 
-pub struct InputValidator;
-
-impl InputValidator {
-    pub fn validate_message(msg: &str) -> Result<(), String> {
-        if msg.trim().is_empty() {
-            return Err("Empty message".into());
-        }
-        if msg.len() > 20_000 {
-            return Err("Message too long".into());
-        }
-        if msg.contains("../") || msg.contains("..\\") {
-            return Err("Path traversal detected".into());
-        }
-        // Block null bytes and control characters
-        if msg.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t')) {
-            return Err("Control characters detected".into());
-        }
-        Ok(())
-    }
-
-    pub fn validate_filename(name: &str) -> Result<(), String> {
-        let re = Regex::new(r"^[A-Za-z0-9._\-/]+$").unwrap();
-        if name.contains("..") || !re.is_match(name) {
-            return Err("Invalid filename".into());
-        }
-        Ok(())
-    }
+pub fn validate_prompt(input: &str) -> Result<(), &'static str> {
+    if input.trim().is_empty() { return Err("prompt is empty"); }
+    if input.len() > 20_000 { return Err("prompt exceeds 20KB"); }
+    if input.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t')) { return Err("prompt contains control characters"); }
+    Ok(())
 }
 
-/// Thread-safe rate limiter for gateway protection.
-#[derive(Clone)]
-pub struct RateLimiter {
-    inner: Arc<Mutex<RateLimiterInner>>,
-}
-
-struct RateLimiterInner {
-    max: usize,
-    window: Duration,
-    hits: HashMap<String, Vec<Instant>>,
-}
-
+pub struct RateLimiter { maximum: usize, window: Duration, hits: HashMap<String, Vec<Instant>> }
 impl RateLimiter {
-    pub fn new(max: usize, window_secs: u64) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(RateLimiterInner {
-                max,
-                window: Duration::from_secs(window_secs),
-                hits: HashMap::new(),
-            })),
-        }
-    }
-
-    pub fn allow(&self, user: &str) -> bool {
-        let mut guard = self.inner.lock().expect("rate limiter lock");
+    pub fn new(maximum: usize, window: Duration) -> Self { Self { maximum, window, hits: HashMap::new() } }
+    pub fn allow(&mut self, key: &str) -> bool {
         let now = Instant::now();
-        let hits = guard.hits.entry(user.to_string()).or_default();
-        hits.retain(|t| now.duration_since(*t) < guard.window);
-        if hits.len() >= guard.max {
-            return false;
-        }
-        hits.push(now);
-        true
+        let values = self.hits.entry(key.to_owned()).or_default();
+        values.retain(|v| now.duration_since(*v) < self.window);
+        if values.len() >= self.maximum { return false; }
+        values.push(now); true
     }
 }

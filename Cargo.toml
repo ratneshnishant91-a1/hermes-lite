@@ -3,35 +3,29 @@ name = "hermes-lite"
 version = "2.0.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Hermes-Lite v2.0 — self-learning agent core in Rust"
+description = "A small, secure, durable agent runtime"
 license = "MIT"
-repository = "https://github.com/ratneshnishant91-a1/hermes-lite"
 
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
-md5 = "0.7"
+meval = "0.2"
 regex = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-secrecy = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ureq = { version = "2.12", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
-meval = "0.2"
-telegram-bot = "0.8"
-tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 tempfile = "3"
 
 [profile.release]
-lto = "fat"
+lto = true
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
-opt-level = 3

@@ -1,25 +1,7 @@
-# Hermes-Lite v2.0 (Rust core)
-# Keep this file minimal; most config is via env vars.
-
-workspace_root: "workspace"
-db_path: "hermes.db"
-skills_root: "skills"
-
-model:
-  default_model: "gpt-4.1-mini"
-
-sandbox:
-  mode: "subprocess"
-  timeout: 30
-  network_enabled: false
-
+workspace_root: workspace
+db_path: hermes.db
 network:
-  enabled: true
+  enabled: false
   allowed_domains: []
-  max_response_size: 10485760
-  timeout: 30
-
-gateway:
-  host: "127.0.0.1"
-  port: 8000
-  require_auth: true
+sandbox:
+  timeout_secs: 10
