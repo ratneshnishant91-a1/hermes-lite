@@ -12,3 +12,6 @@ pub mod workspace;
 
 pub use agent::Agent;
 pub use config::Config;
+pub use store::Store;
+pub use tools::Tools;
+pub use workspace::Workspace;

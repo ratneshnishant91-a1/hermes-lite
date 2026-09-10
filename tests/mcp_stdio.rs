@@ -1,20 +1,28 @@
-use std::io::{Read,Write};
-use std::process::{Command,Stdio};
-use serde_json::{json,Value};
+use hermes_lite::{mcp, tools::Tools, Config};
+use serde_json::{json, Value};
+use tempfile::TempDir;
 
-fn mcp_roundtrip() -> std::io::Result<()> {
-    let mut child = Command::new("cargo").arg("run").arg("--quiet").arg("--").arg("mcp")
-        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
-    let mut buf = String::new();
-    fn req(id:i32,method:&str,params:Value)->String{json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}).to_string()}
-    fn read_resp<R:Read>(r:&mut R)->Value{let mut s=String::new();r.read_to_string(&mut s).unwrap();serde_json::from_str(&s).unwrap()}
-    stdin.write_all(req(1,"initialize",json!({})).as_bytes())?;stdin.flush()?;let _resp:Value=read_resp(&mut stdout);
-    stdin.write_all(req(2,"tools/list",json!({})).as_bytes())?;stdin.flush()?;let tools:Value=read_resp(&mut stdout);
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(),2);
-    stdin.write_all(req(3,"tools/call",json!({"name":"write_file","arguments":{"path":"mcp_test.txt","body":"hello"}})).as_bytes())?;stdin.flush()?;let _resp:Value=read_resp(&mut stdout);
-    let _ = child.kill(); Ok(())
+#[test]
+fn mcp_protocol_flow() -> anyhow::Result<()> {
+    let dir = TempDir::new()?;
+    let cfg = Config {
+        workspace_root: dir.path().display().to_string(),
+        ..Default::default()
+    };
+    let tools = Tools::new(&cfg)?;
+    let init_req = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}).to_string();
+    let init_res: Value = serde_json::from_str(&mcp::process_message(&init_req, &tools).unwrap())?;
+    assert_eq!(init_res["id"], 1);
+    assert_eq!(init_res["result"]["serverInfo"]["name"], "hermes-lite");
+    let list_req = json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}).to_string();
+    let list_res: Value = serde_json::from_str(&mcp::process_message(&list_req, &tools).unwrap())?;
+    let tools_list = list_res["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools_list.len(), 2);
+    let write_req = json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write_file","arguments":{"path":"hello.txt","body":"world"}}}).to_string();
+    let write_res: Value = serde_json::from_str(&mcp::process_message(&write_req, &tools).unwrap())?;
+    assert_eq!(write_res["result"]["content"][0]["text"], "ok");
+    let read_req = json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_file","arguments":{"path":"hello.txt"}}}).to_string();
+    let read_res: Value = serde_json::from_str(&mcp::process_message(&read_req, &tools).unwrap())?;
+    assert_eq!(read_res["result"]["content"][0]["text"], "world");
+    Ok(())
 }
-
-#[test] fn mcp_stdio_works(){let _=mcp_roundtrip();}
